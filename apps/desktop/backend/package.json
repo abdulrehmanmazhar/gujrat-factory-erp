@@ -1,0 +1,19 @@
+{
+    "name": "backend",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "build:preload": "vite build --watch --config vite.preload.config.js",
+        "neu:run": "neu run",
+        "dev": "npm-run-all --parallel build:preload neu:run",
+        "app:build": "neu build --config-file prod.neu.config.json"
+    },
+    "devDependencies": {
+        "typescript": "~6.0.2",
+        "vite": "^8.0.4"
+    },
+    "dependencies": {
+        "@neutralinojs/lib": "^6.7.0"
+    }
+}

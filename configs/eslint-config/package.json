@@ -1,0 +1,22 @@
+{
+    "name": "eslint-config",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "type": "module",
+    "private": true,
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "exports": {
+        ".": {
+            "import": "./index.js",
+            "require": "./index.cjs",
+            "default": "./index.js",
+            "types": "./index.d.ts"
+        }
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC"
+}

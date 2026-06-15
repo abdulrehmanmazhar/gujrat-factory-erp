@@ -1,0 +1,11 @@
+node_modules
+dist
+build
+
+.env
+.env.production
+.env.development
+
+docker/env/mongodb.env
+docker/env/minio.env
+docker/env/server.env

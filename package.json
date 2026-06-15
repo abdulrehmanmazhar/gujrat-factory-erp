@@ -1,20 +1,38 @@
 {
-  "name": "gujrat-factory-erp",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/abdulrehmanmazhar/gujrat-factory-erp.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/abdulrehmanmazhar/gujrat-factory-erp/issues"
-  },
-  "homepage": "https://github.com/abdulrehmanmazhar/gujrat-factory-erp#readme"
+    "name": "gujrat-factory-erp",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+        "prepare": "husky",
+        "format:check": "prettier --ignore-path .prettierignore --check \"**/*.{js,jsx,ts,tsx,json,css,scss,md,html,yml,yaml}\"",
+        "format:fix": "prettier --ignore-path .prettierignore --write \"**/*.{js,jsx,ts,tsx,json,css,scss,md,html,yml,yaml}\""
+    },
+    "lint-staged": {
+        "*.{ts,tsx,js,jsx,json,css,scss,md}": [
+            "prettier --ignore-path .prettierignore --write"
+        ]
+    },
+    "devDependencies": {
+        "@commitlint/cli": "^20.3.1",
+        "@commitlint/config-conventional": "^20.3.1",
+        "@eslint/js": "^9.39.2",
+        "@types/eslint__js": "^9.14.0",
+        "eslint": "^9.39.2",
+        "eslint-config-prettier": "^10.1.8",
+        "husky": "^9.1.7",
+        "lint-staged": "^16.2.7",
+        "prettier": "^3.8.4"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "workspaces": [
+        "packages/server-util",
+        "configs/eslint-config",
+        "configs/ts-config",
+        "apps/desktop/backend",
+        "apps/desktop/frontend",
+        "apps/desktop/server"
+    ]
 }

@@ -1,0 +1,32 @@
+{
+    "applicationId": "app.neutralino.vite",
+    "defaultMode": "window",
+    "documentRoot": "/dist/",
+    "url": "/index.html",
+    "enableServer": true,
+    "port": 0,
+    "singlePageServe": true,
+    "enableNativeAPI": true,
+    "nativeAllowList": ["app.*", "os.*", "filesystem.*", "storage.*", "window.*", "events.*", "debug.*", "extensions.*", "updater.*", "clipboard.*"],
+    "modes": {
+        "window": {
+            "title": "GUJRAT FACTORY ERP",
+            "width": 1200,
+            "height": 800,
+            "icon": "/icon.png",
+            "enableInspector": true
+        }
+    },
+    "logging": {
+        "enabled": true
+    },
+    "cli": {
+        "resourcesPath": "/dist/",
+        "frontendLibrary": {
+            "devUrl": "http://localhost:5173",
+            "projectPath": "../frontend",
+            "devCommand": "set VITE_CTXT=NEUTRALINO&&npm run dev",
+            "patchFile": "../frontend/dist/index.html"
+        }
+    }
+}
