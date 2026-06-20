@@ -22,8 +22,13 @@ io.on('connection', (socket) => {
 
 connectWhatsapp(io)
 
-server.listen(appConfig.PORT, async () => {
-    logger.info(`Server running on port ${appConfig.PORT}`)
+async function bootstrap() {
     await connectDB()
     runScheduler()
-})
+
+    server.listen(appConfig.PORT, () => {
+        logger.info(`Server running on port ${appConfig.PORT}`)
+    })
+}
+
+bootstrap()

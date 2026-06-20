@@ -29,6 +29,6 @@ dist-ssr
 
 node
 
-playwright
+server
 
 chrome-session

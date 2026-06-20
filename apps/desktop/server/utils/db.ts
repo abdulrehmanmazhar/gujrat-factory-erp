@@ -24,13 +24,22 @@ const client = createClient({ url: dbUrl })
 
 export const db = drizzle(client, { schema })
 
+async function runMigrations() {
+    const migrationsFolder = path.join(serverRoot, 'migrations')
+
+    if (!fs.existsSync(migrationsFolder)) {
+        throw new Error(`Migrations folder not found at ${migrationsFolder}`)
+    }
+
+    logger.info('Running database migrations', { meta: { migrationsFolder } })
+    await migrate(db, { migrationsFolder })
+    logger.info('Database migrations applied')
+}
+
 export async function connectDB() {
     try {
         await client.execute('SELECT 1')
-        const migrationsFolder = path.join(serverRoot, 'migrations')
-        if (fs.existsSync(migrationsFolder)) {
-            await migrate(db, { migrationsFolder })
-        }
+        await runMigrations()
         logger.info('Database connected', { meta: { url: dbUrl } })
     } catch (error) {
         logger.error('Database connection failed', { meta: { error } })

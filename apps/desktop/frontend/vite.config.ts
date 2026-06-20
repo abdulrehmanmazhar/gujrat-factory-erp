@@ -50,6 +50,10 @@ export default defineConfig(({ mode }) => {
                     target: apiServer,
                     ws: true,
                     changeOrigin: true
+                },
+                '/test': {
+                    target: apiServer,
+                    changeOrigin: true
                 }
             }
         }

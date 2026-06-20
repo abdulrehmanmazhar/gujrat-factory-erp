@@ -1,10 +1,10 @@
 [Setup]
-AppName=Trip-2-Go Recorder
+AppName=GUJRAT_FACTORY_ERP
 AppVersion=1.0.0
-AppId={{D23B7E91-TRIP2GOREC-PORTABLE}}
-DefaultDirName={localappdata}\Trip2GoRecorder
-DefaultGroupName=Trip-2-Go Recorder
-OutputBaseFilename=Trip2GoRecorder
+AppId={{D23B7E91-GUJRATFACTORYERP-PORTABLE}}
+DefaultDirName={localappdata}\GUJRAT_FACTORY_ERP
+DefaultGroupName=GUJRAT_FACTORY_ERP
+OutputBaseFilename=GUJRAT_FACTORY_ERP
 Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=lowest
@@ -19,9 +19,9 @@ Source: "run.bat"; DestDir: "{app}\installer"
 
 [Icons]
 ; Create desktop shortcut pointing to the batch file, but using the app's icon
-Name: "{userdesktop}\Trip-2-Go Recorder"; Filename: "{app}\installer\run.bat"; IconFilename: "{app}\app\icons\icon.ico"
-Name: "{group}\Trip-2-Go Recorder"; Filename: "{app}\installer\run.bat"; IconFilename: "{app}\app\icons\icon.ico"
+Name: "{userdesktop}\GUJRAT_FACTORY_ERP"; Filename: "{app}\installer\run.bat"; IconFilename: "{app}\app\icons\icon.ico"
+Name: "{group}\GUJRAT_FACTORY_ERP"; Filename: "{app}\installer\run.bat"; IconFilename: "{app}\app\icons\icon.ico"
 
 [Run]
 ; Optional: Launch the app immediately after installation
-Filename: "{app}\installer\run.bat"; Description: "{cm:LaunchProgram,Trip-2-Go Recorder}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\installer\run.bat"; Description: "{cm:LaunchProgram,GUJRAT_FACTORY_ERP}"; Flags: nowait postinstall skipifsilent
