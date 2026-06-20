@@ -1,6 +1,6 @@
 import express from 'express'
-import { authorizeRoles, isAuthenticated } from '../middleware/auth'
-import { createTarget, deleteTarget, getAllTargets, getTargetsByUser, updateTargetProgress } from '../controllers/target.controller'
+import { authorizeRoles, isAuthenticated } from '../middleware/auth.js'
+import { createTarget, deleteTarget, getAllTargets, getTargetsByUser, updateTargetProgress } from '../controllers/target.controller.js'
 const router = express.Router()
 router.post('/create-target/:id', isAuthenticated, authorizeRoles('admin'), createTarget)
 router.get('/gell-all-targets', isAuthenticated, getAllTargets)

@@ -1,6 +1,6 @@
 import express from 'express'
-import { authorizeRoles, isAuthenticated } from '../middleware/auth'
-import { createTransaction, deleteTransaction, getTodayTransactions, getTransactions } from '../controllers/transaction.controller'
+import { authorizeRoles, isAuthenticated } from '../middleware/auth.js'
+import { createTransaction, deleteTransaction, getTodayTransactions, getTransactions } from '../controllers/transaction.controller.js'
 const router = express.Router()
 
 router.post('/create-transaction', isAuthenticated, createTransaction)

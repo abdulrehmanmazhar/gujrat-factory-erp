@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Order Invoices</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; color: #333; }
+        .invoice-page {
+            width: 100%;
+            min-height: 561px;
+            page-break-after: always;
+            border-bottom: 1px solid #000;
+            padding: 8px 0;
+            background: #f9f9f9;
+        }
+        .invoice-page:last-child { page-break-after: auto; border-bottom: none; }
+        .invoice-box {
+            width: 95%;
+            margin: 0 auto;
+            padding: 10px;
+            background: #fff;
+            border: 1px solid #ddd;
+            font-size: 12px;
+        }
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 5px 0;
+        }
+        .header-center { text-align: center; flex: 1; }
+        .header-center h1 { font-size: 14px; margin: 0; }
+        .header-right { text-align: right; font-size: 11px; }
+        .meta-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            font-size: 11px;
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th, td { padding: 5px; border: 1px solid #ddd; }
+        th { background: #f4f4f4; }
+        .totals { text-align: right; font-size: 11px; margin-top: 8px; }
+        .totals .grand { font-weight: bold; font-size: 12px; }
+        .footer { text-align: center; font-size: 10px; color: #888; margin-top: 8px; }
+        .logo-circle {
+            width: 45px; height: 45px; border-radius: 50%;
+            background: #ddd; display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: bold; margin: 0 auto 4px;
+        }
+    </style>
+</head>
+<body>
+    <% invoices.forEach(function(invoice) { %>
+    <div class="invoice-page">
+        <div class="invoice-box">
+            <div class="header-row">
+                <div style="text-align:center; width:80px;">
+                    <div class="logo-circle">ERP</div>
+                    <p style="font-size:8px; margin:0;">Be Pakistani Buy Pakistani</p>
+                </div>
+                <div class="header-center">
+                    <h1><strong><%= company.name %></strong></h1>
+                    <h1><strong>INVOICE</strong></h1>
+                    <p>order no. <strong><%= invoice.orderNumber ?? '—' %></strong></p>
+                </div>
+                <div class="header-right">
+                    <div><%= company.address %></div>
+                    <div><strong>Contact:</strong> <%= company.phone %></div>
+                </div>
+            </div>
+
+            <div class="meta-row">
+                <div>
+                    <p><strong>Business Name:</strong> <%= invoice.customer.businessName || '—' %></p>
+                    <p><strong>Customer:</strong> <%= invoice.customer.name %></p>
+                    <p><strong>Contact:</strong> <%= invoice.customer.contact %></p>
+                    <p><strong>Address:</strong> <%= invoice.customer.address %></p>
+                </div>
+                <div>
+                    <p><strong>Booking Date:</strong> <%= invoice.bookingDate %></p>
+                    <p><strong>Delivery Date:</strong> <%= invoice.deliveryDate %></p>
+                    <p><strong>Order Booker:</strong> <%= invoice.orderBooker %></p>
+                    <p><strong>Previous Dues:</strong> PKR <%= invoice.customer.udhar ?? 0 %></p>
+                </div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Description</th>
+                        <th>Qty</th>
+                        <th>Unit Price</th>
+                        <th>Discount</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% invoice.lines.forEach(function(line, index) { %>
+                    <tr>
+                        <td><%= index + 1 %></td>
+                        <td><%= line.description %></td>
+                        <td><%= line.qty %></td>
+                        <td><%= line.unitPrice %></td>
+                        <td><%= line.discount %></td>
+                        <td><%= line.total %></td>
+                    </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+
+            <% if (invoice.message) { %>
+            <p><strong>Message:</strong> <%= invoice.message %></p>
+            <% } %>
+
+            <div class="totals">
+                <div>Subtotal: PKR <%= invoice.price %></div>
+                <div>Tax (0%): PKR 0</div>
+                <div>Discounts: PKR <%= invoice.discount %></div>
+                <div class="grand">Grand Total: PKR <%= invoice.grandTotal %></div>
+            </div>
+            <div class="footer"><p>Thank you for your business!</p></div>
+        </div>
+    </div>
+    <% }); %>
+</body>
+</html>

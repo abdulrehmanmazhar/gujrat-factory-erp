@@ -1,6 +1,5 @@
-require('dotenv').config()
-import express, { Request, Response, NextFunction } from 'express'
-import { User as IUser } from '../models/user.model'
+import express, { Response } from 'express'
+import { appConfig } from '../config/env.js'
 
 interface ITokenOptions {
     expires: Date
@@ -10,31 +9,24 @@ interface ITokenOptions {
     secure?: boolean
 }
 
-const accessTokenExpire = parseInt(process.env.ACCESS_TOKEN_EXPIRE || '300', 10)
-const refreshTokenExpire = parseInt(process.env.REFRESH_TOKEN_EXPIRE || '1200', 10)
-
-// options for cookies
 export const accessTokenOptions: ITokenOptions = {
-    expires: new Date(Date.now() + accessTokenExpire + 1000 * 60 * 60),
-    maxAge: accessTokenExpire + 60 * 60 * 1000,
+    expires: new Date(Date.now() + appConfig.ACCESS_TOKEN_EXPIRE + 1000 * 60 * 60),
+    maxAge: appConfig.ACCESS_TOKEN_EXPIRE + 60 * 60 * 1000,
     httpOnly: true,
     sameSite: 'none',
     secure: true
 }
 
 export const refreshTokenOptions: ITokenOptions = {
-    expires: new Date(Date.now() + refreshTokenExpire + 1000 * 60 * 60 * 24),
-    maxAge: accessTokenExpire + 60 * 60 * 24 * 1000,
+    expires: new Date(Date.now() + appConfig.REFRESH_TOKEN_EXPIRE + 1000 * 60 * 60 * 24),
+    maxAge: appConfig.REFRESH_TOKEN_EXPIRE + 60 * 60 * 24 * 1000,
     httpOnly: true,
     sameSite: 'none',
     secure: true
 }
 
-export const sendToken = (user: IUser, statusCode: number, res: Response) => {
-    const accessToken = user.SignAccessToken()
-    const refreshToken = user.SignRefreshToken()
-
-    if (process.env.NODE_ENV === 'production') {
+export const sendToken = (user: object, accessToken: string, refreshToken: string, statusCode: number, res: Response) => {
+    if (appConfig.ENV === 'production') {
         accessTokenOptions.secure = true
     }
 

@@ -16,8 +16,8 @@ import {
     updateRole,
     updateUserInfo,
     verifyUser
-} from '../controllers/user.controller'
-import { authorizeRoles, isAuthenticated } from '../middleware/auth'
+} from '../controllers/user.controller.js'
+import { authorizeRoles, isAuthenticated } from '../middleware/auth.js'
 const router = express.Router()
 
 router.post('/registration', registrationUser)

@@ -6,6 +6,4 @@ build
 .env.production
 .env.development
 
-docker/env/mongodb.env
-docker/env/minio.env
-docker/env/server.env
+pos-web-2.0-main

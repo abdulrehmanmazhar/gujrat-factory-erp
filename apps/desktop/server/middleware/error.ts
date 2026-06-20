@@ -1,28 +1,26 @@
-import ErrorHandler from '../utils/ErrorHandler'
-import express, { Request, Response, NextFunction } from 'express'
+import { Request, Response, NextFunction } from 'express'
+import { AppError } from '../utils/errors.js'
+import { httpError } from '../utils/http.js'
+import type { THttpError } from 'server-util'
 
-export const errorMiddleware = (err: any, req: Request, res: Response, next: NextFunction) => {
-    err.statusCode = err.statusCode || 500
-    err.message = err.message || 'internal server error'
+export const CatchAsyncError = (handler: (req: Request, res: Response, next: NextFunction) => Promise<void>) => {
+    return (req: Request, res: Response, next: NextFunction) => {
+        Promise.resolve(handler(req, res, next)).catch((error) => {
+            if (error instanceof AppError) {
+                return next(httpError(next, error, req, error.statusCode))
+            }
+            return next(httpError(next, error instanceof Error ? error : new Error('Something went wrong'), req, 500))
+        })
+    }
+}
 
-    // wrong mongodb id error
-    if (err.name === 'CastError') {
-        const message = `Resource not found. Invalid: ${err.path}`
-        err = new ErrorHandler(message, 404)
-    }
-    // Duplicate key error
-    if (err.code === 11000) {
-        const message = `Duplicate ${Object.keys(err.keyValue)} entered`
-        err = new ErrorHandler(message, 404)
-    }
-    // wrong jwt error
-    if (err.name === 'JsonWebTokenError') {
-        const message = `json web token is invalid, try again`
-        err = new ErrorHandler(message, 404)
-    }
-
+export const errorMiddleware = (err: THttpError, _req: Request, res: Response, _next: NextFunction) => {
     res.status(err.statusCode).json({
-        success: false,
-        message: err.message
+        success: err.success,
+        message: err.message,
+        statusCode: err.statusCode,
+        request: err.request,
+        data: err.data,
+        ...(err.trace ? { trace: err.trace } : {})
     })
 }

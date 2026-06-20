@@ -1,6 +1,6 @@
 import express from 'express'
-import { authorizeRoles, isAuthenticated } from '../middleware/auth'
-import { addCustomer, deleteCustomer, editCustomer, getCustomer, getCustomerById, returnUdhar } from '../controllers/customer.controller'
+import { authorizeRoles, isAuthenticated } from '../middleware/auth.js'
+import { addCustomer, deleteCustomer, editCustomer, getCustomer, getCustomerById, returnUdhar } from '../controllers/customer.controller.js'
 const router = express.Router()
 
 router.post('/add-customer', isAuthenticated, addCustomer)

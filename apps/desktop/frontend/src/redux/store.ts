@@ -1,19 +1,24 @@
 import { configureStore } from '@reduxjs/toolkit'
-import processReducer from './slice/process'
-import nodeReducer from './slice/node'
-import inspectorReducer from './slice/inspector'
+import { setupListeners } from '@reduxjs/toolkit/query'
+import { apiSlice } from '@/redux/api/apiSlice'
+import authReducer from '@/redux/slices/authSlice'
+import '@/redux/api/authApi'
+import '@/redux/api/customersApi'
+import '@/redux/api/productsApi'
+import '@/redux/api/ordersApi'
+import '@/redux/api/usersApi'
+import '@/redux/api/suppliersApi'
 
-const store = configureStore({
+export const store = configureStore({
     reducer: {
-        process: processReducer,
-        node: nodeReducer,
-        inspector: inspectorReducer
+        auth: authReducer,
+        [apiSlice.reducerPath]: apiSlice.reducer
     },
-    devTools: true
-    // middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat()
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(apiSlice.middleware)
 })
+
+setupListeners(store.dispatch)
 
 export type RootState = ReturnType<typeof store.getState>
 export type AppDispatch = typeof store.dispatch
-
 export default store

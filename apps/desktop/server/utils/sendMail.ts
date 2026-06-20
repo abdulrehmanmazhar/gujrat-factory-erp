@@ -1,6 +1,9 @@
 import nodemailer, { Transporter } from 'nodemailer'
 import ejs from 'ejs'
-import path from 'path'
+import path from 'node:path'
+import { moduleDir } from './esm.js'
+
+const __dirname = moduleDir(import.meta.url)
 
 interface EmailOptions {
     email: string

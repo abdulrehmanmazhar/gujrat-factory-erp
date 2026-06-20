@@ -1,130 +1,73 @@
-// @ts-nocheck
-require('dotenv').config()
-import express, { Request, Response, NextFunction } from 'express'
-import ErrorHandler from '../utils/ErrorHandler'
-import { CatchAsyncError } from '../middleware/catchAsyncError'
-import path from 'path'
+import path from 'node:path'
+import fs from 'node:fs'
+import { moduleDir } from '../utils/esm.js'
+
+const __dirname = moduleDir(import.meta.url)
 import multer from 'multer'
-import TransactionModel from '../models/transaction.model'
 import cloudinary from 'cloudinary'
-import fs from 'fs'
+import { Request, Response } from 'express'
+import { CatchAsyncError } from '../middleware/catchAsyncError.js'
+import { httpResponse } from '../utils/http.js'
+import { AppError } from '../utils/errors.js'
+import { param } from '../utils/params.js'
+import * as transactionService from '../services/transaction.service.js'
 
 const uploadDir = path.join(__dirname, '..', 'proofs')
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true })
-}
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, path.join(__dirname, '..', 'proofs')) // Use an absolute path to avoid errors
-    },
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
 
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9)
-        cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname)}`)
+const upload = multer({
+    storage: multer.diskStorage({
+        destination: (_req, _file, cb) => cb(null, uploadDir),
+        filename: (_req, file, cb) => cb(null, `${file.fieldname}-${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`)
+    }),
+    fileFilter: (_req, file, cb) => {
+        if (file.mimetype.startsWith('image/')) cb(null, true)
+        else cb(new Error('Only image files are allowed!'))
     }
 })
-
-const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-    if (file.mimetype.startsWith('image/')) {
-        cb(null, true)
-    } else {
-        cb(new Error('Only image files are allowed!'), false)
-    }
-}
-
-const upload = multer({ storage, fileFilter })
 
 export const createTransaction = [
-    upload.single('proofImage'), // Middleware to handle file uploads
-    CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+    upload.single('proofImage'),
+    CatchAsyncError(async (req: Request, res: Response) => {
         const { type, amount, description, orderId } = req.body
-        const proofImage = req.file // File uploaded by multer
-        const createdBy = req.user._id
+        if (!type || !amount || !description) throw new AppError('Missing required fields', 400)
 
-        if (!type || !amount || !description) {
-            return next(new ErrorHandler('Missing required fields', 400))
+        let proofImage: string | undefined
+        if (req.file) {
+            const myCloud = await cloudinary.v2.uploader.upload(req.file.path, { folder: 'proofs' })
+            proofImage = myCloud.secure_url
         }
 
-        const transactionData: any = { type, amount, description, createdBy }
-
-        if (type === 'sale') {
-            if (orderId) {
-                return next(new ErrorHandler('Missing required fields', 400))
-            }
-            transactionData.orderId = orderId
-        }
-        if (proofImage) {
-            const myCloud = await cloudinary.v2.uploader.upload(proofImage, { folder: 'proofs' })
-            transactionData.proofImage = myCloud.secure_url // Save file path to transaction
-        }
-
-        const transaction = await TransactionModel.create(transactionData)
-
-        if (!transaction) {
-            return next(new ErrorHandler('Error occurred while creating transaction', 500))
-        }
-
-        res.status(200).json({
-            success: true,
-            transaction
+        const transaction = await transactionService.createTransaction({
+            type,
+            amount,
+            description,
+            createdById: req.user!.id,
+            orderId: type === 'sale' ? orderId : undefined,
+            proofImage
         })
+
+        httpResponse(req, res, 200, 'Transaction created successfully', { transaction })
     })
 ]
-export const deleteTransaction = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { id } = req.params
-        const target = await TransactionModel.findById(id)
-        if (!target) {
-            return next(new ErrorHandler('Targetted transaction not found', 400))
-        }
-        let result = await TransactionModel.findByIdAndDelete(id)
 
-        res.status(200).json({
-            success: true,
-            message: 'Transaction removed successfully'
-        })
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 500))
-    }
+export const deleteTransaction = CatchAsyncError(async (req: Request, res: Response) => {
+    await transactionService.deleteTransaction(param(req.params.id))
+    httpResponse(req, res, 200, 'Transaction removed successfully', null)
 })
 
-export const getTransactions = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const transactions = await TransactionModel.find().sort({ createdAt: -1 })
-
-        if (!transactions) {
-            return next(new ErrorHandler('No transactions found', 404))
-        }
-        res.status(200).json({
-            success: true,
-            transactions
-        })
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 500))
-    }
+export const getTransactions = CatchAsyncError(async (req: Request, res: Response) => {
+    const transactions = await transactionService.listTransactions()
+    httpResponse(req, res, 200, 'Transactions fetched successfully', { transactions })
 })
 
-export const getTodayTransactions = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        // Get the start and end of today in ISO format
-        const startOfDay = new Date()
-        startOfDay.setHours(0, 0, 0, 0) // Start of the day
+export const getTodayTransactions = CatchAsyncError(async (req: Request, res: Response) => {
+    const transactions = await transactionService.listTodayTransactions()
+    httpResponse(req, res, 200, 'Today transactions fetched successfully', { transactions })
+})
 
-        const endOfDay = new Date()
-        endOfDay.setHours(23, 59, 59, 999) // End of the day
-
-        const transactions = await TransactionModel.find({
-            createdAt: {
-                $gte: startOfDay,
-                $lte: endOfDay
-            }
-        }).sort({ createdAt: -1 })
-
-        res.status(200).json({
-            success: true,
-            transactions
-        })
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 500))
-    }
+export const getSales = CatchAsyncError(async (req: Request, res: Response) => {
+    const { type, dateRange, startDate, endDate } = req.body
+    const sales = await transactionService.getSalesByDateRange(dateRange, startDate, endDate)
+    httpResponse(req, res, 200, 'Sales fetched successfully', { sales, type })
 })

@@ -1,494 +1,116 @@
-// @ts-nocheck
-
-require('dotenv').config()
-import { Request, Response, NextFunction } from 'express'
-import userModel, { User as IUser } from '../models/user.model'
-import ErrorHandler from '../utils/ErrorHandler'
-import { CatchAsyncError } from '../middleware/catchAsyncError'
-import Jwt, { JwtPayload } from 'jsonwebtoken'
-// import ejs from "ejs";
-// import path from "path";
-import sendMail from '../utils/sendMail'
-import { accessTokenOptions, refreshTokenOptions, sendToken } from '../utils/jwt'
-import { getAllUsers, getUserById, updateUserRole } from '../services/user.service'
+import { Request, Response } from 'express'
+import Jwt from 'jsonwebtoken'
 import cloudinary from 'cloudinary'
-// register user
+import { CatchAsyncError } from '../middleware/catchAsyncError.js'
+import { httpResponse } from '../utils/http.js'
+import { AppError } from '../utils/errors.js'
+import { appConfig } from '../config/env.js'
+import { param } from '../utils/params.js'
+import { accessTokenOptions, refreshTokenOptions, sendToken } from '../utils/jwt.js'
+import * as userService from '../services/user.service.js'
 
-interface RegistrationBody {
-    name: string
-    email: string
-    password: string
-    avatar?: string
-}
-
-export const registrationUser = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { name, email, password } = req.body
-        const isEmailExist = await userModel.findOne({ email })
-        if (isEmailExist) {
-            return next(new ErrorHandler('Email already exist', 400))
-        }
-
-        const user: RegistrationBody = {
-            name,
-            email,
-            password
-        }
-
-        const activationToken = createActivationToken(user)
-
-        const activationCode = activationToken.activationCode
-
-        const data = { user: { name: user.name }, activationCode }
-
-        try {
-            await sendMail({
-                email: user.email,
-                subject: 'Activate your account',
-                template: 'activation-mail.ejs',
-                data
-            })
-            res.status(201).json({
-                success: true,
-                message: `Please check your email ${user.email} to activate your account`,
-                activationToken: activationToken.token
-            })
-        } catch (error: any) {
-            return next(new ErrorHandler(error.message, 400))
-        }
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 400))
-    }
+export const registrationUser = CatchAsyncError(async (req: Request, res: Response) => {
+    const { name, email, password } = req.body
+    const result = await userService.registerUser(name, email, password)
+    httpResponse(req, res, 201, `Please check your email ${email} to activate your account`, result)
 })
 
-interface IActivationToken {
-    token: string
-    activationCode: string
-}
-
-export const createActivationToken = (user: any): IActivationToken => {
-    const activationCode = Math.floor(1000 + Math.random() * 9000).toString()
-
-    const token = Jwt.sign(
-        {
-            user,
-            activationCode
-        },
-        process.env.ACTIVATION_SECRET,
-        {
-            expiresIn: '5m'
-        }
-    )
-
-    return { token, activationCode }
-}
-
-// activating user account
-
-interface IActivationRequest {
-    activation_token: string
-    activation_code: string
-}
-
-export const activateUser = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { activation_token, activation_code } = req.body as IActivationRequest
-        const newUser: { user: IUser; activationCode: string } = Jwt.verify(activation_token, process.env.ACTIVATION_SECRET as string) as {
-            user: IUser
-            activationCode: string
-        }
-        if (newUser.activationCode !== activation_code) {
-            return next(new ErrorHandler('Invalid activation code', 400))
-        }
-        const { name, email, password } = newUser.user
-        const existUser = await userModel.findOne({ email })
-
-        if (existUser) {
-            return next(new ErrorHandler('email already exist', 400))
-        }
-        await userModel.create({
-            name,
-            email,
-            password
-        })
-        res.status(201).json({
-            success: true,
-            message: 'user activated successfully'
-        })
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 400))
-    }
+export const activateUser = CatchAsyncError(async (req: Request, res: Response) => {
+    const { activation_token, activation_code } = req.body
+    await userService.activateUser(activation_token, activation_code)
+    httpResponse(req, res, 201, 'user activated successfully', null)
 })
 
-// login user
-
-interface ILoginRequest {
-    email: string
-    password: string
-}
-
-export const LoginUser = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { email, password } = req.body as ILoginRequest
-
-        if (!email || !password) {
-            return next(new ErrorHandler('Please enter email and password', 400))
-        }
-
-        const user = await userModel.findOne({ email }).select('+password')
-
-        if (!user) {
-            return next(new ErrorHandler('Invalid email or password', 400))
-        }
-
-        const isPasswordMatch = await user.comparePassword(password)
-
-        if (!isPasswordMatch) {
-            return next(new ErrorHandler('Invalid email or password', 400))
-        }
-        if (!user.isVerified) {
-            return next(new ErrorHandler('Cannot login without being verified by admin', 400))
-        }
-        sendToken(user, 200, res)
-    } catch (error: any) {
-        return next(new ErrorHandler(error.message, 400))
-    }
+export const LoginUser = CatchAsyncError(async (req: Request, res: Response) => {
+    const { email, password } = req.body
+    if (!email || !password) throw new AppError('Please enter email and password', 400)
+    const result = await userService.loginUser(email, password)
+    sendToken(result.user, result.accessToken, result.refreshToken, 200, res)
 })
 
-export const logoutUser = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        res.cookie('access_token', '', { maxAge: 1, sameSite: 'none', secure: true })
-        res.cookie('refresh_token', '', { maxAge: 1, sameSite: 'none', secure: true })
-        const userId = req.user?._id || ''
-        res.status(201).json({
-            success: true,
-            message: 'Logged out successfully'
-        })
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 400))
-    }
+export const logoutUser = CatchAsyncError(async (req: Request, res: Response) => {
+    res.cookie('access_token', '', { maxAge: 1, sameSite: 'none', secure: true })
+    res.cookie('refresh_token', '', { maxAge: 1, sameSite: 'none', secure: true })
+    httpResponse(req, res, 201, 'Logged out successfully', null)
 })
 
-// update access token
-export const updateAccessToken = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const refresh_token = req.cookies.refresh_token as string
-        const decoded = Jwt.verify(refresh_token, process.env.REFRESH_TOKEN as string) as JwtPayload
-        if (!decoded) {
-            return next(new ErrorHandler("Couldn't refresh token", 400))
-        }
-        const session = (await userModel.findById(decoded.id)) as any
-        if (!session) {
-            return next(new ErrorHandler("Couldn't refresh token", 400))
-        }
-        // const user = JSON.parse(session)
-        const user = session
-        const accessToken = Jwt.sign({ id: user._id }, process.env.ACCESS_TOKEN, {
-            expiresIn: '5m'
-        })
-        const refreshToken = Jwt.sign({ id: user._id }, process.env.REFRESH_TOKEN, {
-            expiresIn: '3d'
-        })
-        req.user = user
-        res.cookie('access_token', accessToken, accessTokenOptions)
-        res.cookie('refresh_token', refreshToken, refreshTokenOptions)
-        res.status(200).json({
-            status: 'success',
-            accessToken
-        })
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 400))
-    }
+export const updateAccessToken = CatchAsyncError(async (req: Request, res: Response) => {
+    const refreshToken = req.cookies.refresh_token as string
+    const decoded = Jwt.verify(refreshToken, appConfig.REFRESH_TOKEN) as { id: string }
+    const result = await userService.refreshAccessToken(decoded.id)
+    req.user = { ...result.user, _id: result.user.id, id: result.user.id } as Express.Request['user']
+    res.cookie('access_token', result.accessToken, accessTokenOptions)
+    res.cookie('refresh_token', result.refreshToken, refreshTokenOptions)
+    res.status(200).json({ status: 'success', accessToken: result.accessToken })
 })
 
-// get user info
-export const getUserInfo = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const userId = req.user?._id
-        getUserById(userId, res)
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 400))
-    }
+export const getUserInfo = CatchAsyncError(async (req: Request, res: Response) => {
+    const user = await userService.getUserWithRoutes(req.user!.id)
+    httpResponse(req, res, 200, 'User fetched successfully', { user })
 })
 
-interface ISocialBody {
-    email: string
-    name: string
-    avatar: string
-}
-
-// social auth
-export const socialAuth = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { email, name, avatar } = req.body as ISocialBody
-        const user = await userModel.findOne({ email })
-        if (!user) {
-            const newUser = await userModel.create({ email, name, avatar })
-            sendToken(newUser, 200, res)
-        } else {
-            sendToken(user, 200, res)
-        }
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 400))
-    }
+export const socialAuth = CatchAsyncError(async (req: Request, res: Response) => {
+    const { email, name, avatar } = req.body
+    const result = await userService.createSocialUser(email, name, avatar)
+    sendToken(result.user, result.accessToken, result.refreshToken, 200, res)
 })
 
-interface IUpdateUserInfo {
-    name: string
-    email: string
-}
-
-export const updateUserInfo = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { name, email } = req.body as IUpdateUserInfo
-        const userId = req.user?._id
-        const user = await userModel.findById(userId)
-        if (email && user) {
-            const isEmailExist = await userModel.findOne({ email })
-
-            if (isEmailExist) {
-                return next(new ErrorHandler('Email already exist', 200))
-            }
-            user.email = email
-        }
-        if (name && user) {
-            user.name = name
-        }
-
-        await user?.save()
-        res.status(200).json({
-            success: true,
-            user
-        })
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 400))
-    }
+export const updateUserInfo = CatchAsyncError(async (req: Request, res: Response) => {
+    const user = await userService.updateUserInfo(req.user!.id, req.body.name, req.body.email)
+    httpResponse(req, res, 200, 'User updated successfully', { user })
 })
 
-// update user password
-
-interface IUpdatePassword {
-    oldPassword: string
-    newPassword: string
-}
-
-export const updatePassword = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { oldPassword, newPassword } = req.body as IUpdatePassword
-        //console.log(oldPassword, newPassword);
-        if (!oldPassword || !newPassword) {
-            return next(new ErrorHandler('Please enter old or new password', 400))
-        }
-        const user = await userModel.findById(req.user?._id).select('+password')
-
-        if (user?.password === undefined) {
-            return next(new ErrorHandler('Invalid user', 400))
-        }
-        const isPasswordMatch = await user?.comparePassword(oldPassword)
-
-        if (!isPasswordMatch) {
-            return next(new ErrorHandler('Invalid password', 400))
-        }
-        user.password = newPassword
-
-        await user.save()
-        res.status(201).json({
-            success: true,
-            user
-        })
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 400))
-    }
+export const updatePassword = CatchAsyncError(async (req: Request, res: Response) => {
+    const user = await userService.updateUserPassword(req.user!.id, req.body.oldPassword, req.body.newPassword)
+    httpResponse(req, res, 201, 'Password updated successfully', { user })
 })
 
-interface IUpdateProfilePicture {
-    avatar: string
-}
-export const updateProfilePicture = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    const { avatar } = req.body as IUpdateProfilePicture
-    const userId = req.user?._id
-    const user = await userModel.findById(req.user?._id)
+export const updateProfilePicture = CatchAsyncError(async (req: Request, res: Response) => {
+    const { avatar } = req.body
+    let publicId: string | undefined
+    let url: string | undefined
 
-    try {
-        if (avatar && user) {
-            if (user?.avatar?.public_id) {
-                await cloudinary.v2.uploader.destroy(user?.avatar?.public_id)
-                const myCloud = await cloudinary.v2.uploader.upload(avatar, {
-                    folder: 'avatars',
-                    width: 150
-                })
-                user.avatar = {
-                    public_id: myCloud.public_id,
-                    url: myCloud.secure_url
-                }
-            } else {
-                const myCloud = await cloudinary.v2.uploader.upload(avatar, {
-                    folder: 'avatars',
-                    width: 150
-                })
-                user.avatar = {
-                    public_id: myCloud.public_id,
-                    url: myCloud.secure_url
-                }
-            }
-        }
-        await user?.save()
-
-        res.status(200).json({
-            success: true,
-            user
-        })
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 500))
+    if (avatar) {
+        const myCloud = await cloudinary.v2.uploader.upload(avatar, { folder: 'avatars', width: 150 })
+        publicId = myCloud.public_id
+        url = myCloud.secure_url
     }
+
+    const user = await userService.updateUserAvatar(req.user!.id, publicId!, url!)
+    httpResponse(req, res, 200, 'Avatar updated successfully', { user })
 })
 
-// get all users for admin
-
-export const fetchAllUsers = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        getAllUsers(res)
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 500))
-    }
+export const fetchAllUsers = CatchAsyncError(async (req: Request, res: Response) => {
+    const users = await userService.listUsers()
+    httpResponse(req, res, 200, 'Users fetched successfully', { users })
 })
 
-// update user role for admin
-
-export const updateRole = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { id, role } = req.body
-        updateUserRole(res, id, role)
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 400))
-    }
+export const updateRole = CatchAsyncError(async (req: Request, res: Response) => {
+    const user = await userService.updateUserRole(req.body.id, req.body.role)
+    httpResponse(req, res, 201, 'Role updated successfully', { user })
 })
 
-// delete user for admin
-
-export const deleteUser = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { id } = req.params
-        const user = await userModel.findById(id)
-
-        if (!user) {
-            return next(new ErrorHandler('User not found', 404))
-        }
-        await user.deleteOne({ id })
-
-        res.status(200).json({
-            success: true,
-            message: 'User deleted successfully'
-        })
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 400))
-    }
+export const deleteUser = CatchAsyncError(async (req: Request, res: Response) => {
+    await userService.deleteUser(param(req.params.id))
+    httpResponse(req, res, 200, 'User deleted successfully', null)
 })
 
-// add user without email authorization for admin
-
-export const addUser = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { name, email, password } = req.body
-        const isEmailExist = await userModel.findOne({ email })
-        if (isEmailExist) {
-            return next(new ErrorHandler('Email already exist', 400))
-        }
-
-        const user = await userModel.create({
-            name,
-            email,
-            password,
-            isVerified: true
-        })
-        res.status(201).json({
-            success: true,
-            message: 'user added successfully'
-        })
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 400))
-    }
+export const addUser = CatchAsyncError(async (req: Request, res: Response) => {
+    await userService.addVerifiedUser(req.body.name, req.body.email, req.body.password)
+    httpResponse(req, res, 201, 'user added successfully', null)
 })
 
-export const verifyUser = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { id } = req.params
-        const doesUserExist = await userModel.findById(id)
-        if (!doesUserExist) {
-            return next(new ErrorHandler('User Does not exist', 400))
-        }
-
-        doesUserExist.isVerified = true
-
-        doesUserExist.save()
-
-        res.status(201).json({
-            success: true,
-            message: 'user verified successfully'
-        })
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 400))
-    }
+export const verifyUser = CatchAsyncError(async (req: Request, res: Response) => {
+    await userService.verifyUserById(param(req.params.id))
+    httpResponse(req, res, 201, 'user verified successfully', null)
 })
 
-export const routeAssign = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { id: userId } = req.params
-        const route: string = req.body.route as string
-
-        // Check if user exists
-        const doesUserExist = await userModel.findById(userId)
-        if (!doesUserExist) {
-            return next(new ErrorHandler('User does not exist', 400))
-        }
-
-        // Validate route
-        if (!route) {
-            return next(new ErrorHandler('Assign appropriate route', 400))
-        }
-
-        // Add route to the user's routes array
-        doesUserExist.routes.push(route)
-
-        // Save the updated user document
-        await doesUserExist.save()
-
-        res.status(201).json({
-            success: true,
-            message: 'Assigned route to user successfully'
-        })
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 400))
-    }
+export const routeAssign = CatchAsyncError(async (req: Request, res: Response) => {
+    await userService.assignRoute(param(req.params.id), req.body.route)
+    httpResponse(req, res, 201, 'Assigned route to user successfully', null)
 })
 
-export const routeAssignDeletion = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { id: userId, index } = req.params
-        const doesUserExist = await userModel.findById(userId)
-
-        if (!doesUserExist) {
-            return next(new ErrorHandler('User does not exist', 400))
-        }
-
-        // Ensure index is a valid number
-        const idx = parseInt(index, 10)
-        if (isNaN(idx) || idx < 0 || idx >= doesUserExist.routes.length) {
-            return next(new ErrorHandler('Invalid index', 400))
-        }
-
-        // Remove the element at the given index
-        doesUserExist.routes.splice(idx, 1)
-
-        // Save the updated document
-        await doesUserExist.save()
-
-        res.status(200).json({
-            success: true,
-            message: 'Deleted assigned route from user successfully',
-            remainingRoutes: doesUserExist.routes // Optional: Return remaining routes
-        })
-    } catch (error) {
-        return next(new ErrorHandler(error.message, 400))
-    }
+export const routeAssignDeletion = CatchAsyncError(async (req: Request, res: Response) => {
+    const remainingRoutes = await userService.deleteAssignedRoute(param(req.params.id), parseInt(param(req.params.index), 10))
+    httpResponse(req, res, 200, 'Deleted assigned route from user successfully', { remainingRoutes })
 })

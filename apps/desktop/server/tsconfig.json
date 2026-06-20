@@ -1,13 +1,30 @@
 {
+    "extends": "ts-config/tsconfig.json",
     "compilerOptions": {
-        "esModuleInterop": true,
-        "skipLibCheck": true,
+        "rootDir": ".",
+        "outDir": "./dist",
         "module": "NodeNext",
         "moduleResolution": "NodeNext",
-        "outDir": "./dist",
+        "target": "ESNext",
+        "lib": ["ESNext"],
+        "strict": false,
+        "noImplicitAny": false,
+        "noUnusedLocals": false,
+        "noUnusedParameters": false,
+        "noImplicitReturns": false,
+        "verbatimModuleSyntax": false,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "strictNullChecks": false,
+        "strictFunctionTypes": false,
+        "strictPropertyInitialization": false,
+        "declaration": false,
+        "declarationMap": false,
+        "sourceMap": true,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
         "typeRoots": ["./node_modules/@types", "./@types"]
-        // other options...
     },
     "include": ["**/*.ts"],
-    "exclude": ["node_modules"]
+    "exclude": ["node_modules", "dist"]
 }

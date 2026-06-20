@@ -94,6 +94,16 @@ import fs from 'fs'
 import { makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } from 'baileys'
 
 let sock
+let latestQr: string | null = null
+let whatsappConnected = false
+
+export function getLatestQr() {
+    return latestQr
+}
+
+export function isWhatsappConnected() {
+    return whatsappConnected
+}
 
 export async function connectWhatsapp(io) {
     const { state, saveCreds } = await useMultiFileAuthState('auth')
@@ -111,11 +121,14 @@ export async function connectWhatsapp(io) {
             const { connection, lastDisconnect, qr } = events['connection.update']
 
             if (qr) {
-                //console.log("Sending QR code to frontend...");
-                io.emit('qr', qr) // ✅ Send QR code to frontend
+                latestQr = qr
+                io.emit('qr', qr)
             }
 
             if (connection === 'close') {
+                whatsappConnected = false
+                latestQr = null
+                io.emit('whatsapp:disconnected')
                 const reason = lastDisconnect?.error?.output?.statusCode
 
                 if (reason === DisconnectReason.loggedOut) {
@@ -130,7 +143,9 @@ export async function connectWhatsapp(io) {
                 //console.log("Disconnected. Reconnecting...");
                 connectWhatsapp(io) // Reconnect to generate new QR if needed
             } else if (connection === 'open') {
-                //console.log("WhatsApp connected!");
+                whatsappConnected = true
+                latestQr = null
+                io.emit('whatsapp:connected')
             }
         }
 
@@ -159,13 +174,38 @@ export async function logoutWhatsapp(io) {
     }
 }
 
+export function formatWhatsAppContact(contact: string) {
+    let normalized = contact.replace(/[^0-9]/g, '')
+    if (normalized.startsWith('0')) normalized = `92${normalized.slice(1)}`
+    else if (normalized.startsWith('0092')) normalized = normalized.slice(2)
+    else if (normalized.startsWith('+92')) normalized = normalized.slice(1)
+    else if (!normalized.startsWith('92')) normalized = `92${normalized}`
+    return normalized.length === 12 ? normalized : null
+}
+
+function toJid(phoneNumber: string) {
+    return `${phoneNumber}@s.whatsapp.net`
+}
+
 // Function to send a message
-export async function sendMessage(phoneNumber, message) {
-    try {
-        const jid = phoneNumber + '@s.whatsapp.net'
-        await sock.sendMessage(jid, { text: message })
-        //console.log(`Message sent to ${phoneNumber}: ${message}`);
-    } catch (err) {
-        console.error(`Failed to send message to ${phoneNumber}:`, err)
+export async function sendMessage(phoneNumber: string, message: string) {
+    if (!sock || !whatsappConnected) {
+        throw new Error('WhatsApp is not connected')
     }
+
+    const jid = toJid(phoneNumber)
+    await sock.sendMessage(jid, { text: message })
+}
+
+export async function sendDocument(phoneNumber: string, document: Buffer, fileName: string, mimetype = 'application/pdf') {
+    if (!sock || !whatsappConnected) {
+        throw new Error('WhatsApp is not connected')
+    }
+
+    const jid = toJid(phoneNumber)
+    await sock.sendMessage(jid, {
+        document,
+        mimetype,
+        fileName
+    })
 }
