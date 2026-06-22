@@ -13,20 +13,24 @@ import {
     SidebarTrigger
 } from '@/components/ui/sidebar'
 import constants from '@/constants/app'
+import { isAdminOrAbove, isSuperAdmin } from '@/lib/roles'
 import { useLogoutMutation } from '@/redux/api/authApi'
 import { selectCurrentUser } from '@/redux/slices/authSlice'
 import {
     BarChart3,
+    CalendarClock,
     CreditCard,
     HelpCircle,
     LayoutDashboard,
     LogOut,
+    MessageCircle,
     Package,
     Settings,
     ShoppingBag,
     ShoppingCart,
     Target,
     Truck,
+    UserCircle,
     Users,
     UsersRound
 } from 'lucide-react'
@@ -41,12 +45,15 @@ const navItems = [
     { to: '/', label: 'Home', icon: BarChart3 },
     { to: '/dashboard', label: 'Dashboard', icon: Target },
     { to: '/pos', label: 'POS', icon: ShoppingBag },
+    { to: '/delayed-orders', label: 'Delayed orders', icon: CalendarClock },
     { to: '/orders', label: 'Orders', icon: ShoppingCart },
+    { to: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
     { to: '/payments', label: 'Payments', icon: CreditCard },
     { to: '/inventory', label: 'Inventory', icon: Package },
     { to: '/customers', label: 'Customers', icon: Users },
-    { to: '/suppliers', label: 'Suppliers', icon: Truck },
-    { to: '/community', label: 'Community', icon: UsersRound },
+    { to: '/suppliers', label: 'Suppliers', icon: Truck, adminOnly: true },
+    { to: '/community', label: 'Community', icon: UsersRound, superAdminOnly: true },
+    { to: '/profile', label: 'Profile', icon: UserCircle },
     { to: '/settings', label: 'Settings', icon: Settings },
     { to: '/help', label: 'Help', icon: HelpCircle }
 ]
@@ -82,19 +89,25 @@ export function AppLayout() {
                         <SidebarGroupLabel>Navigation</SidebarGroupLabel>
                         <SidebarGroupContent>
                             <SidebarMenu>
-                                {navItems.map((item) => (
-                                    <SidebarMenuItem key={item.to}>
-                                        <SidebarMenuButton asChild>
-                                            <NavLink
-                                                to={item.to}
-                                                end={item.to === '/'}
-                                                className={({ isActive }) => (isActive ? 'bg-sidebar-accent' : '')}>
-                                                <item.icon className="size-4" />
-                                                <span>{item.label}</span>
-                                            </NavLink>
-                                        </SidebarMenuButton>
-                                    </SidebarMenuItem>
-                                ))}
+                                {navItems
+                                    .filter((item) => {
+                                        if (item.superAdminOnly && !isSuperAdmin(user?.role)) return false
+                                        if (item.adminOnly && !isAdminOrAbove(user?.role)) return false
+                                        return true
+                                    })
+                                    .map((item) => (
+                                        <SidebarMenuItem key={item.to}>
+                                            <SidebarMenuButton asChild>
+                                                <NavLink
+                                                    to={item.to}
+                                                    end={item.to === '/'}
+                                                    className={({ isActive }) => (isActive ? 'bg-sidebar-accent' : '')}>
+                                                    <item.icon className="size-4" />
+                                                    <span>{item.label}</span>
+                                                </NavLink>
+                                            </SidebarMenuButton>
+                                        </SidebarMenuItem>
+                                    ))}
                             </SidebarMenu>
                         </SidebarGroupContent>
                     </SidebarGroup>

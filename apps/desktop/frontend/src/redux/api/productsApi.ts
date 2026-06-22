@@ -6,7 +6,8 @@ export const productsApi = apiSlice.injectEndpoints({
     endpoints: (builder) => ({
         getProducts: builder.query<{ products: Product[] }, void>({
             queryFn: createListQueryFn('/get-products', { products: [] }),
-            providesTags: ['Products']
+            providesTags: ['Products'],
+            keepUnusedDataFor: 30
         }),
         addProduct: builder.mutation<
             ApiEnvelope<{ createdProduct: Product }>,

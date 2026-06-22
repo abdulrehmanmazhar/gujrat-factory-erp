@@ -18,7 +18,9 @@ export const createOrder = CatchAsyncError(async (req: Request, res: Response) =
         req.body.cart,
         req.body.deliveryDate,
         req.body.message,
-        parseFloat(req.body.additionalDiscount) || 0
+        parseFloat(req.body.additionalDiscount) || 0,
+        req.body.orderMode === 'pos' ? 'pos' : 'delayed',
+        parseFloat(req.body.payment) || 0
     )
     httpResponse(req, res, 200, result.message, null)
 })
@@ -33,9 +35,10 @@ export const addOrder = CatchAsyncError(async (req: Request, res: Response) => {
     httpResponse(req, res, 200, result.message, null)
 })
 
-export const deleteOrder = CatchAsyncError(async (req: Request, res: Response) => {
-    await orderService.deleteOrder(param(req.params.id))
-    httpResponse(req, res, 200, 'Deleted order and returned products', null)
+export const cancelOrder = CatchAsyncError(async (req: Request, res: Response) => {
+    const refundAmount = parseFloat(req.body.refundAmount) || 0
+    const order = await orderService.cancelOrder(param(req.params.id), refundAmount, req.user!.id)
+    httpResponse(req, res, 200, 'Order cancelled successfully', { order })
 })
 
 export const getOrder = CatchAsyncError(async (req: Request, res: Response) => {
@@ -55,6 +58,12 @@ export const addOrderPayment = CatchAsyncError(async (req: Request, res: Respons
     }
     const order = await orderService.addOrderPayment(param(req.params.id), payment, req.user!.id)
     httpResponse(req, res, 200, 'Payment added successfully', { order })
+})
+
+export const returnOrder = CatchAsyncError(async (req: Request, res: Response) => {
+    const refundAmount = parseFloat(req.body.refundAmount) || 0
+    const order = await orderService.returnOrder(param(req.params.id), refundAmount, req.user!.id)
+    httpResponse(req, res, 200, 'Order returned successfully', { order })
 })
 
 export const returnOrderUdhar = CatchAsyncError(async (req: Request, res: Response) => {

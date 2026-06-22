@@ -1,28 +1,40 @@
 import { useMemo, useState } from 'react'
-import { OrderDetailDialog, PaymentDialog } from '@/components/orders/OrderDetailDialog'
-import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
+import { CancelOrderDialog, OrderDetailDialog, PaymentDialog, ReturnOrderDialog } from '@/components/orders/OrderDetailDialog'
 import { DataTable } from '@/components/shared/DataTable'
 import { PageHeader, RowActions } from '@/components/shared/PageHeader'
 import { PaginationControls, paginate, totalPages } from '@/components/shared/PaginationControls'
 import { SearchInput } from '@/components/shared/SearchInput'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { downloadBlob } from '@/lib/download'
 import { getApiErrorMessage } from '@/lib/errors'
-import { useDeleteOrderMutation, useGenerateInvoicesMutation, useGetOrdersQuery } from '@/redux/api/ordersApi'
+import { useGenerateInvoicesMutation, useGetOrdersQuery } from '@/redux/api/ordersApi'
 import type { Order } from '@/types/api'
 import { FileDown } from 'lucide-react'
 import { toast } from 'sonner'
 
+function orderStatusLabel(order: Order) {
+    if (order.status === 'cancelled') return 'Cancelled'
+    if (order.returnedAt || order.status === 'returned') return 'Returned'
+    return 'Active'
+}
+
+function orderStatusVariant(order: Order): 'default' | 'secondary' | 'destructive' | 'outline' {
+    if (order.status === 'cancelled') return 'destructive'
+    if (order.returnedAt || order.status === 'returned') return 'secondary'
+    return 'outline'
+}
+
 export default function OrdersPage() {
-    const { data, isLoading, refetch } = useGetOrdersQuery()
-    const [deleteOrder, { isLoading: deleting }] = useDeleteOrderMutation()
+    const { data, isLoading } = useGetOrdersQuery()
     const [generateInvoices, { isLoading: generating }] = useGenerateInvoicesMutation()
     const [search, setSearch] = useState('')
     const [page, setPage] = useState(1)
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [detailOrder, setDetailOrder] = useState<Order | null>(null)
     const [paymentOrder, setPaymentOrder] = useState<Order | null>(null)
-    const [deleteId, setDeleteId] = useState<string | null>(null)
+    const [returnOrder, setReturnOrder] = useState<Order | null>(null)
+    const [cancelOrder, setCancelOrder] = useState<Order | null>(null)
     const perPage = 10
 
     const filtered = useMemo(() => {
@@ -118,33 +130,77 @@ export default function OrdersPage() {
                     { key: 'price', label: 'Total' },
                     { key: 'payment', label: 'Paid' },
                     {
+                        key: 'status',
+                        label: 'Status',
+                        render: (row) => {
+                            const order = row as unknown as Order
+                            return <Badge variant={orderStatusVariant(order)}>{orderStatusLabel(order)}</Badge>
+                        }
+                    },
+                    {
+                        key: 'orderMode',
+                        label: 'Mode',
+                        render: (row) => ((row as unknown as Order).orderMode === 'pos' ? 'POS' : 'Delayed')
+                    },
+                    {
                         key: 'deliveryStatus',
                         label: 'Delivered',
                         render: (row) => (row.deliveryStatus ? 'Yes' : 'No')
                     }
                 ]}
                 rows={rows as unknown as Record<string, unknown>[]}
-                renderActions={(row) => (
-                    <RowActions
-                        extra={
-                            <>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setDetailOrder(row as unknown as Order)}>
-                                    View
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setPaymentOrder(row as unknown as Order)}>
-                                    Pay
-                                </Button>
-                            </>
-                        }
-                        onDelete={() => setDeleteId(String(row.id ?? row._id))}
-                    />
-                )}
+                renderActions={(row) => {
+                    const order = row as unknown as Order
+                    const isCancelled = order.status === 'cancelled'
+                    const isReturned = !!order.returnedAt || order.status === 'returned'
+                    const payable = Math.max(0, (order.price ?? 0) - (order.discount ?? 0))
+                    const outstanding = Math.max(0, payable - (order.payment ?? 0))
+                    const canPayFirst = !isCancelled && !isReturned && (order.payment === null || order.payment === undefined)
+                    const canPayUdhar = !isCancelled && !isReturned && order.payment !== null && order.payment !== undefined && outstanding > 0
+                    const canReturn = !!order.deliveryStatus && !isReturned && !isCancelled
+                    const canCancel = !order.deliveryStatus && !isReturned && !isCancelled
+
+                    return (
+                        <RowActions
+                            extra={
+                                <>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setDetailOrder(order)}>
+                                        View
+                                    </Button>
+                                    {canPayFirst ? (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setPaymentOrder(order)}>
+                                            Pay
+                                        </Button>
+                                    ) : null}
+                                    {canPayUdhar ? (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setPaymentOrder(order)}>
+                                            Collect
+                                        </Button>
+                                    ) : null}
+                                    {canReturn ? (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setReturnOrder(order)}>
+                                            Return
+                                        </Button>
+                                    ) : null}
+                                </>
+                            }
+                            deleteLabel="Cancel"
+                            onDelete={canCancel ? () => setCancelOrder(order) : undefined}
+                        />
+                    )
+                }}
             />
 
             <OrderDetailDialog
@@ -156,27 +212,27 @@ export default function OrdersPage() {
                 open={!!paymentOrder}
                 onOpenChange={() => setPaymentOrder(null)}
                 order={paymentOrder}
-                onSuccess={() => {
-                    setPaymentOrder(null)
-                    refetch()
-                }}
+                mode={
+                    paymentOrder &&
+                    paymentOrder.payment !== null &&
+                    paymentOrder.payment !== undefined &&
+                    Math.max(0, (paymentOrder.price ?? 0) - (paymentOrder.discount ?? 0) - (paymentOrder.payment ?? 0)) > 0
+                        ? 'udhar'
+                        : 'payment'
+                }
+                onSuccess={() => setPaymentOrder(null)}
             />
-            <ConfirmDialog
-                open={!!deleteId}
-                onOpenChange={() => setDeleteId(null)}
-                title="Delete order?"
-                onConfirm={async () => {
-                    if (!deleteId) return
-                    try {
-                        await deleteOrder(deleteId).unwrap()
-                        toast.success('Order deleted')
-                        setDeleteId(null)
-                        refetch()
-                    } catch (err) {
-                        toast.error(getApiErrorMessage(err, 'Delete failed'))
-                    }
-                }}
-                loading={deleting}
+            <ReturnOrderDialog
+                open={!!returnOrder}
+                onOpenChange={() => setReturnOrder(null)}
+                order={returnOrder}
+                onSuccess={() => setReturnOrder(null)}
+            />
+            <CancelOrderDialog
+                open={!!cancelOrder}
+                onOpenChange={() => setCancelOrder(null)}
+                order={cancelOrder}
+                onSuccess={() => setCancelOrder(null)}
             />
         </div>
     )

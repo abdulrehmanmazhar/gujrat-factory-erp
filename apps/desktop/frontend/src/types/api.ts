@@ -66,6 +66,9 @@ export interface Order {
     deliveryStatus?: boolean | null
     deliveryDate?: string | null
     message?: string | null
+    orderMode?: 'pos' | 'delayed' | null
+    stockDeducted?: boolean | null
+    returnedAt?: string | null
     createdAt?: string
     createdBy?: string
 }

@@ -1,7 +1,6 @@
 // @ts-nocheck
 
-import { and, desc, eq, gte, isNull, lte, or, sql } from 'drizzle-orm'
-import schedule from 'node-schedule'
+import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
 import { db } from '../utils/db.js'
 import { customerOrders, customers, orderItems, orders, products, targets, transactions, users } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
@@ -10,6 +9,9 @@ import { logger } from '../config/logger.js'
 import { adjustProductStock, findProductsByIds } from './product.service.js'
 
 type CartInput = { productId: string; qty: number }[]
+type OrderMode = 'pos' | 'delayed'
+
+const SCHEDULER_INTERVAL_MS = Number(process.env.SCHEDULER_INTERVAL_MS || 5 * 60 * 1000)
 
 async function findDraftOrder(customerId: string) {
     const [order] = await db
@@ -67,6 +69,22 @@ async function upsertCartItems(orderId: string, cart: CartInput, productMap: Map
     }
 }
 
+async function deductOrderStock(orderId: string, customerId: string) {
+    const items = await getOrderItemsWithProducts(orderId)
+    for (const item of items) {
+        await adjustProductStock(customerId, item.productId, item.qty, 'minus')
+    }
+    await db.update(orders).set({ stockDeducted: true, updatedAt: new Date() }).where(eq(orders.id, orderId))
+}
+
+async function restoreOrderStock(orderId: string, customerId: string) {
+    const items = await getOrderItemsWithProducts(orderId)
+    for (const item of items) {
+        await adjustProductStock(customerId, item.productId, item.qty, 'add')
+    }
+    await db.update(orders).set({ stockDeducted: false, updatedAt: new Date() }).where(eq(orders.id, orderId))
+}
+
 export async function targetUpdation(userId: string) {
     try {
         const activeTargets = await db
@@ -77,7 +95,7 @@ export async function targetUpdation(userId: string) {
         await Promise.all(
             activeTargets.map(async (target) => {
                 let progress = 0
-                const dateFilter = and(gte(orders.createdAt, target.startDate), lte(orders.createdAt, target.endDate))
+                const dateFilter = and(gte(orders.createdAt, target.startDate), lte(orders.createdAt, target.endDate), eq(orders.status, 'saved'))
 
                 if (target.type === 'orders') {
                     const userOrders = target.productId
@@ -119,7 +137,7 @@ export async function targetUpdation(userId: string) {
     }
 }
 
-async function processCart(customerId: string, createdById: string, cart: CartInput) {
+async function processCart(customerId: string, createdById: string, cart: CartInput, deductStock: boolean) {
     const [customer] = await db.select().from(customers).where(eq(customers.id, customerId)).limit(1)
     if (!customer) throw new AppError('Customer not found', 400)
 
@@ -129,27 +147,31 @@ async function processCart(customerId: string, createdById: string, cart: CartIn
 
     const productMap = new Map(productList.map((p) => [p.id, p]))
 
-    for (const { productId, qty } of cart) {
-        const product = productMap.get(productId)
-        if (!product) continue
-        await adjustProductStock(customerId, productId, qty, 'minus')
-    }
-
     let order = await findDraftOrder(customerId)
     if (!order) {
-        const [created] = await db.insert(orders).values({ id: createId(), customerId, createdById }).returning()
+        const [created] = await db
+            .insert(orders)
+            .values({ id: createId(), customerId, createdById, orderMode: 'delayed', stockDeducted: false })
+            .returning()
         order = created
     }
 
     await upsertCartItems(order.id, cart, productMap)
-    await targetUpdation(createdById)
 
+    if (deductStock) {
+        for (const { productId, qty } of cart) {
+            await adjustProductStock(customerId, productId, qty, 'minus')
+        }
+        await db.update(orders).set({ stockDeducted: true, updatedAt: new Date() }).where(eq(orders.id, order.id))
+    }
+
+    await targetUpdation(createdById)
     const items = await getOrderItemsWithProducts(order.id)
     return mapOrderWithCart(order, items)
 }
 
 export async function createCart(customerId: string, createdById: string, cart: CartInput) {
-    return processCart(customerId, createdById, cart)
+    return processCart(customerId, createdById, cart, false)
 }
 
 function calculateOrderTotals(items: Awaited<ReturnType<typeof getOrderItemsWithProducts>>, additionalDiscount: number) {
@@ -158,16 +180,111 @@ function calculateOrderTotals(items: Awaited<ReturnType<typeof getOrderItemsWith
     return { price, discount }
 }
 
+function orderPayable(price: number, discount: number) {
+    return Math.max(price - discount, 0)
+}
+
 async function getNextOrderNumber() {
     const [last] = await db.select({ orderNumber: orders.orderNumber }).from(orders).orderBy(desc(orders.orderNumber)).limit(1)
     return last?.orderNumber ? last.orderNumber + 1 : 1
 }
 
-async function finalizeOrder(orderId: string, customerId: string, deliveryDate: string, message: string, additionalDiscount: number) {
+async function createSavedOrderDirect(customerId: string, createdById: string, cart: CartInput, orderMode: OrderMode) {
+    const [customer] = await db.select().from(customers).where(eq(customers.id, customerId)).limit(1)
+    if (!customer) throw new AppError('Customer not found', 400)
+
+    const productList = await findProductsByIds(cart.map((item) => item.productId))
+    if (productList.length !== cart.length) throw new AppError('Some products not found', 400)
+
+    const productMap = new Map(productList.map((p) => [p.id, p]))
+    const [order] = await db
+        .insert(orders)
+        .values({
+            id: createId(),
+            customerId,
+            createdById,
+            orderMode,
+            stockDeducted: false,
+            status: ''
+        })
+        .returning()
+
+    await upsertCartItems(order.id, cart, productMap)
+    return order
+}
+
+async function queueOrderInvoice(orderId: string) {
+    const { queueOrderInvoiceWhatsApp } = await import('./invoice.service.js')
+    await queueOrderInvoiceWhatsApp(orderId)
+}
+
+async function recordPaymentTransaction(orderId: string, customerId: string, payment: number, userId: string, type = 'sale') {
+    if (payment <= 0) return null
+
+    const [txn] = await db
+        .insert(transactions)
+        .values({
+            id: createId(),
+            type,
+            amount: payment,
+            description: type === 'order_refund' ? 'Order refund' : 'Sales from order',
+            orderId,
+            createdById: userId
+        })
+        .returning()
+
+    const { queueTransactionReceiptWhatsApp } = await import('./receipt.service.js')
+    await queueTransactionReceiptWhatsApp(txn.id)
+    return txn
+}
+
+async function applyOrderPayment(orderId: string, payment: number, userId: string, markDelivered: boolean) {
+    const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+    if (!order) throw new AppError('Order not found', 404)
+
+    const payable = orderPayable(order.price ?? 0, order.discount ?? 0)
+    const alreadyPaid = order.payment ?? 0
+    if (alreadyPaid + payment > payable) throw new AppError('Cannot pay more than remaining amount', 400)
+
+    const [customer] = await db.select().from(customers).where(eq(customers.id, order.customerId)).limit(1)
+    if (!customer) throw new AppError('Customer not found', 404)
+
+    const newPaid = alreadyPaid + payment
+    const remainingAfter = payable - newPaid
+    const newUdhar = Math.max((customer.udhar || 0) + remainingAfter, 0)
+
+    const [updatedOrder] = await db
+        .update(orders)
+        .set({
+            payment: newPaid,
+            deliveryStatus: markDelivered ? true : order.deliveryStatus,
+            updatedAt: new Date()
+        })
+        .where(eq(orders.id, orderId))
+        .returning()
+
+    if (payment > 0) await recordPaymentTransaction(orderId, order.customerId, payment, userId)
+
+    await db.update(customers).set({ udhar: newUdhar, updatedAt: new Date() }).where(eq(customers.id, customer.id))
+    return withLegacyId(updatedOrder)
+}
+
+async function finalizeOrder(
+    orderId: string,
+    customerId: string,
+    deliveryDate: string,
+    message: string,
+    additionalDiscount: number,
+    orderMode: OrderMode,
+    initialPayment?: number,
+    userId?: string
+) {
     const items = await getOrderItemsWithProducts(orderId)
     const { price, discount } = calculateOrderTotals(items, additionalDiscount)
     const delivery = new Date(deliveryDate)
     delivery.setUTCHours(0, 0, 0, 0)
+
+    const isPos = orderMode === 'pos'
 
     const [order] = await db
         .update(orders)
@@ -176,9 +293,10 @@ async function finalizeOrder(orderId: string, customerId: string, deliveryDate: 
             deliveryDate: delivery,
             message,
             status: 'saved',
-            deliveryStatus: false,
+            orderMode,
             price,
             discount,
+            deliveryStatus: isPos,
             updatedAt: new Date()
         })
         .where(eq(orders.id, orderId))
@@ -186,9 +304,16 @@ async function finalizeOrder(orderId: string, customerId: string, deliveryDate: 
 
     await db.insert(customerOrders).values({ id: createId(), customerId, orderId }).onConflictDoNothing()
 
-    const { sendOrderReceiptWhatsApp } = await import('./invoice.service.js')
-    await sendOrderReceiptWhatsApp(orderId)
+    if (isPos) {
+        await deductOrderStock(orderId, customerId)
+        if (typeof initialPayment === 'number' && initialPayment > 0 && userId) {
+            await applyOrderPayment(orderId, initialPayment, userId, true)
+        }
+    } else if (typeof initialPayment === 'number' && initialPayment > 0 && userId) {
+        await applyOrderPayment(orderId, initialPayment, userId, false)
+    }
 
+    await queueOrderInvoice(orderId)
     return order
 }
 
@@ -198,11 +323,20 @@ export async function createOrder(
     cart: CartInput,
     deliveryDate: string,
     message = '',
-    additionalDiscount = 0
+    additionalDiscount = 0,
+    orderMode: OrderMode = 'delayed',
+    payment = 0
 ) {
     if (!deliveryDate) throw new AppError('Missing required fields', 400)
-    const order = await processCart(customerId, createdById, cart)
-    await finalizeOrder(order.id, customerId, deliveryDate, message, additionalDiscount)
+
+    if (orderMode === 'pos') {
+        const order = await createSavedOrderDirect(customerId, createdById, cart, 'pos')
+        await finalizeOrder(order.id, customerId, deliveryDate, message, additionalDiscount, 'pos', payment, createdById)
+        return { message: 'POS order saved successfully' }
+    }
+
+    const order = await processCart(customerId, createdById, cart, false)
+    await finalizeOrder(order.id, customerId, deliveryDate, message, additionalDiscount, 'delayed', payment, createdById)
     return { message: 'Order saved successfully' }
 }
 
@@ -213,8 +347,8 @@ export async function deleteCartItem(orderId: string, index: number) {
 
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
     if (!order) throw new AppError('Order not found', 400)
+    if (order.stockDeducted) await adjustProductStock(order.customerId, cartItem.productId, cartItem.qty, 'add')
 
-    await adjustProductStock(order.customerId, cartItem.productId, cartItem.qty, 'add')
     await db.delete(orderItems).where(eq(orderItems.id, cartItem.id))
 }
 
@@ -223,21 +357,73 @@ export async function addOrder(orderId: string, deliveryDate: string, message = 
     if (!order) throw new AppError('Order not found', 400)
     if (!deliveryDate) throw new AppError('Missing required fields', 400)
 
-    await finalizeOrder(orderId, order.customerId, deliveryDate, message, additionalDiscount)
+    await finalizeOrder(orderId, order.customerId, deliveryDate, message, additionalDiscount, 'delayed')
     return { message: 'Order saved successfully' }
 }
 
-export async function deleteOrder(orderId: string) {
+export async function cancelOrder(orderId: string, refundAmount: number, userId: string) {
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
-    if (!order) throw new AppError('Order not found', 400)
+    if (!order) throw new AppError('Order not found', 404)
+    if (order.status === 'cancelled') throw new AppError('Order is already cancelled', 400)
+    if (order.deliveryStatus) throw new AppError('Delivered orders cannot be cancelled', 400)
+    if (order.returnedAt) throw new AppError('Returned orders cannot be cancelled', 400)
+    if (refundAmount < 0) throw new AppError('Refund amount must be non-negative', 400)
 
-    const items = await getOrderItemsWithProducts(orderId)
-    for (const item of items) {
-        await adjustProductStock(order.customerId, item.productId, item.qty, 'add')
+    const paid = order.payment ?? 0
+    if (refundAmount > paid) throw new AppError('Refund cannot exceed amount paid on this order', 400)
+
+    if (order.stockDeducted) await restoreOrderStock(orderId, order.customerId)
+
+    const [customer] = await db.select().from(customers).where(eq(customers.id, order.customerId)).limit(1)
+    if (!customer) throw new AppError('Customer not found', 404)
+
+    const payable = orderPayable(order.price ?? 0, order.discount ?? 0)
+    const outstandingFromOrder = Math.max(0, payable - paid)
+    const newUdhar = Math.max((customer.udhar || 0) - outstandingFromOrder, 0)
+
+    const [updated] = await db
+        .update(orders)
+        .set({
+            status: 'cancelled',
+            updatedAt: new Date()
+        })
+        .where(eq(orders.id, orderId))
+        .returning()
+
+    await db.update(customers).set({ udhar: newUdhar, updatedAt: new Date() }).where(eq(customers.id, customer.id))
+
+    if (refundAmount > 0) {
+        await recordPaymentTransaction(orderId, order.customerId, refundAmount, userId, 'order_refund')
     }
 
-    await db.delete(customerOrders).where(eq(customerOrders.orderId, orderId))
-    await db.delete(orders).where(eq(orders.id, orderId))
+    const items = await getOrderItemsWithProducts(orderId)
+    return mapOrderWithCart(updated, items)
+}
+
+export async function returnOrder(orderId: string, refundAmount: number, userId: string) {
+    const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+    if (!order) throw new AppError('Order not found', 404)
+    if (order.status === 'cancelled') throw new AppError('Cancelled orders cannot be returned', 400)
+    if (!order.deliveryStatus) throw new AppError('Only delivered orders can be returned', 400)
+    if (order.returnedAt) throw new AppError('Order has already been returned', 400)
+    if (refundAmount < 0) throw new AppError('Refund amount must be non-negative', 400)
+
+    if (order.stockDeducted) await restoreOrderStock(orderId, order.customerId)
+
+    await db
+        .update(orders)
+        .set({
+            returnedAt: new Date(),
+            status: 'returned',
+            updatedAt: new Date()
+        })
+        .where(eq(orders.id, orderId))
+
+    if (refundAmount > 0) {
+        await recordPaymentTransaction(orderId, order.customerId, refundAmount, userId, 'order_refund')
+    }
+
+    return withLegacyId(order)
 }
 
 export async function getOrder(orderId: string) {
@@ -248,7 +434,12 @@ export async function getOrder(orderId: string) {
 }
 
 export async function listOrders() {
-    const allOrders = await db.select().from(orders).orderBy(desc(orders.createdAt))
+    const allOrders = await db
+        .select()
+        .from(orders)
+        .where(inArray(orders.status, ['saved', 'cancelled', 'returned']))
+        .orderBy(desc(orders.createdAt))
+
     if (!allOrders.length) throw new AppError('No orders found', 404)
 
     return Promise.all(
@@ -267,6 +458,9 @@ export async function listOrders() {
 
             return {
                 ...mapOrderWithCart(order, items),
+                orderMode: order.orderMode,
+                stockDeducted: order.stockDeducted,
+                returnedAt: order.returnedAt,
                 userDetails: userDetails ? withLegacyId(userDetails) : { name: 'Unknown User', email: 'N/A' },
                 customerDetails: customerDetails ? withLegacyId(customerDetails) : { name: 'Unknown Customer', contact: 'N/A' }
             }
@@ -277,44 +471,23 @@ export async function listOrders() {
 export async function addOrderPayment(orderId: string, payment: number, userId: string) {
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
     if (!order) throw new AppError('Order not found', 404)
-    if (order.payment !== null && order.payment !== undefined) throw new AppError('Payment has already been made and cannot be changed', 400)
-
-    const orderPrice = order.price ?? 0
-    const discount = order.discount ?? 0
-    const remainingAmount = orderPrice - discount - (order.payment ?? 0)
-    if (payment > remainingAmount) throw new AppError('Cannot pay more than remaining amount', 400)
-
-    const [customer] = await db.select().from(customers).where(eq(customers.id, order.customerId)).limit(1)
-    if (!customer) throw new AppError('Customer not found', 404)
-
-    const newUdhar = Math.max((customer.udhar || 0) + remainingAmount - payment, 0)
-
-    const [updatedOrder] = await db
-        .update(orders)
-        .set({ payment, deliveryStatus: true, updatedAt: new Date() })
-        .where(eq(orders.id, orderId))
-        .returning()
-
-    if (payment > 0) {
-        await db.insert(transactions).values({
-            id: createId(),
-            type: 'sale',
-            amount: payment,
-            description: 'Sales from order',
-            createdById: userId
-        })
+    if (order.status === 'cancelled') throw new AppError('Cancelled orders cannot accept payments', 400)
+    if (order.returnedAt) throw new AppError('Returned orders cannot accept payments', 400)
+    if (order.payment !== null && order.payment !== undefined) {
+        throw new AppError('Payment has already been made and cannot be changed', 400)
     }
 
-    await db.update(customers).set({ udhar: newUdhar, updatedAt: new Date() }).where(eq(customers.id, customer.id))
-    return withLegacyId(updatedOrder)
+    return applyOrderPayment(orderId, payment, userId, order.orderMode === 'pos')
 }
 
 export async function returnOrderUdhar(orderId: string, payment: number, userId: string) {
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
     if (!order) throw new AppError('Order not found', 404)
+    if (order.status === 'cancelled') throw new AppError('Cancelled orders cannot accept payments', 400)
     if (order.payment === null || order.payment === undefined) throw new AppError("Cannot modify this order's payment", 400)
+    if (order.returnedAt) throw new AppError('Returned orders cannot accept payments', 400)
 
-    const totalPayable = (order.price ?? 0) - (order.discount ?? 0)
+    const totalPayable = orderPayable(order.price ?? 0, order.discount ?? 0)
     if ((order.payment ?? 0) >= totalPayable) throw new AppError('This order is already fully paid', 400)
 
     const [customer] = await db.select().from(customers).where(eq(customers.id, order.customerId)).limit(1)
@@ -325,13 +498,17 @@ export async function returnOrderUdhar(orderId: string, payment: number, userId:
     if (payment > customer.udhar) throw new AppError("Cannot pay more than customer's udhar amount", 400)
     if (payment === 0 && order.payment === 0) throw new AppError('Payment has already been recorded as zero', 400)
 
-    await db.insert(transactions).values({
-        id: createId(),
-        type: 'sale',
-        amount: payment,
-        description: `${customer.name} (${customer.address}) paid from their udhar: ${customer.udhar}`,
-        createdById: userId
-    })
+    const [txn] = await db
+        .insert(transactions)
+        .values({
+            id: createId(),
+            type: 'sale',
+            amount: payment,
+            description: `${customer.name} (${customer.address}) paid from their udhar: ${customer.udhar}`,
+            orderId,
+            createdById: userId
+        })
+        .returning()
 
     await db
         .update(customers)
@@ -344,39 +521,52 @@ export async function returnOrderUdhar(orderId: string, payment: number, userId:
         .where(eq(orders.id, orderId))
         .returning()
 
+    const { queueTransactionReceiptWhatsApp } = await import('./receipt.service.js')
+    await queueTransactionReceiptWhatsApp(txn.id)
+
     return withLegacyId(updated)
 }
 
-export function runScheduler() {
-    schedule.scheduleJob('updateOrderPayments', '30 23 * * *', async () => {
+export async function processDueDeliveries() {
+    const today = new Date()
+    today.setUTCHours(23, 59, 59, 999)
+
+    const dueOrders = await db
+        .select()
+        .from(orders)
+        .where(
+            and(
+                eq(orders.status, 'saved'),
+                eq(orders.orderMode, 'delayed'),
+                eq(orders.stockDeducted, false),
+                isNull(orders.returnedAt),
+                lte(orders.deliveryDate, today)
+            )
+        )
+
+    for (const order of dueOrders) {
         try {
-            const today = new Date()
-            today.setUTCHours(0, 0, 0, 0)
-            const tomorrow = new Date(today)
-            tomorrow.setUTCDate(today.getUTCDate() + 1)
-
-            const dueOrders = await db
-                .select()
-                .from(orders)
-                .where(and(gte(orders.deliveryDate, today), lte(orders.deliveryDate, tomorrow), isNull(orders.payment)))
-
-            for (const order of dueOrders) {
-                await db
-                    .update(orders)
-                    .set({ payment: order.price ?? 0, deliveryStatus: true, updatedAt: new Date() })
-                    .where(eq(orders.id, order.id))
-
-                await db.insert(transactions).values({
-                    id: createId(),
-                    type: 'sale',
-                    description: `Sale against order number ${order.orderNumber} as sale`,
-                    amount: order.price ?? 0,
-                    orderId: order.id,
-                    createdBySystem: true
-                })
-            }
+            await deductOrderStock(order.id, order.customerId)
+            await db.update(orders).set({ deliveryStatus: true, updatedAt: new Date() }).where(eq(orders.id, order.id))
+            logger.info('Delayed order delivered and stock deducted', { meta: { orderId: order.id, orderNumber: order.orderNumber } })
         } catch (error) {
-            logger.error('Failed nightly order payment check', { meta: { error } })
+            logger.error('Failed processing due delivery', { meta: { orderId: order.id, error } })
         }
-    })
+    }
+}
+
+export function runScheduler() {
+    const tick = async () => {
+        try {
+            await processDueDeliveries()
+            const { processWhatsAppQueue } = await import('../utils/whatsappQueue.js')
+            await processWhatsAppQueue()
+        } catch (error) {
+            logger.error('Scheduler tick failed', { meta: { error } })
+        }
+    }
+
+    tick()
+    setInterval(tick, SCHEDULER_INTERVAL_MS)
+    logger.info('Background scheduler started', { meta: { intervalMs: SCHEDULER_INTERVAL_MS } })
 }

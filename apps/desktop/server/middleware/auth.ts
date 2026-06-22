@@ -9,6 +9,7 @@ import { httpError } from '../utils/http.js'
 import { appConfig } from '../config/env.js'
 import { mapUser } from '../utils/mappers.js'
 import { getUserRoutes } from '../services/user.service.js'
+import { roleCanAccess } from '../utils/roles.js'
 
 export const isAuthenticated = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
     const accessToken = req.cookies.access_token
@@ -33,7 +34,10 @@ export const isAuthenticated = CatchAsyncError(async (req: Request, res: Respons
 
 export const authorizeRoles = (...roles: string[]) => {
     return (req: Request, _res: Response, next: NextFunction) => {
-        if (!req.user?.role || !roles.includes(req.user.role)) {
+        const userRole = req.user?.role
+        const allowed = roles.some((role) => roleCanAccess(role, userRole))
+
+        if (!allowed) {
             return next(httpError(next, new AppError(`Role: ${req.user?.role} is not allowed to access this resource`, 403), req, 403))
         }
         next()

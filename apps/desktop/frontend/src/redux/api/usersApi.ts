@@ -8,10 +8,6 @@ export const usersApi = apiSlice.injectEndpoints({
             queryFn: createListQueryFn('/get-all-users-admin', { users: [] }),
             providesTags: ['Users']
         }),
-        addUser: builder.mutation<ApiEnvelope<null>, { name: string; email: string; password: string }>({
-            query: (body) => ({ url: '/add-user-admin', method: 'POST', body }),
-            invalidatesTags: ['Users']
-        }),
         deleteUser: builder.mutation<ApiEnvelope<null>, string>({
             query: (id) => ({ url: `/delete-user/${id}`, method: 'DELETE' }),
             invalidatesTags: ['Users']
@@ -64,14 +60,7 @@ export const analyticsApi = apiSlice.injectEndpoints({
     })
 })
 
-export const {
-    useGetUsersQuery,
-    useAddUserMutation,
-    useDeleteUserMutation,
-    useUpdateUserRoleMutation,
-    useVerifyUserMutation,
-    useAssignRouteMutation
-} = usersApi
+export const { useGetUsersQuery, useDeleteUserMutation, useUpdateUserRoleMutation, useVerifyUserMutation, useAssignRouteMutation } = usersApi
 
 export const { useGetTargetsQuery, useCreateTargetMutation, useDeleteTargetMutation } = targetsApi
 export const { useGetSalesMutation } = analyticsApi

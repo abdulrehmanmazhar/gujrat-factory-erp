@@ -9,19 +9,61 @@ import {
     productSales,
     products,
     productStockHistory,
+    restockOrders,
     targets,
     transactions,
     userRoutes,
     users
 } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
-import { comparePassword, hashPassword, signAccessToken, signRefreshToken, signActivationToken, verifyActivationToken } from '../utils/auth.js'
+import {
+    comparePassword,
+    hashPassword,
+    signAccessToken,
+    signRefreshToken,
+    signActivationToken,
+    signResetToken,
+    verifyActivationToken,
+    verifyResetToken
+} from '../utils/auth.js'
 import { createId, mapUser, withLegacyId, withLegacyIds } from '../utils/mappers.js'
+import { isSuperAdmin, ROLES } from '../utils/roles.js'
 import sendMail from '../utils/sendMail.js'
 
 export async function findUserByEmail(email: string) {
     const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1)
     return user ?? null
+}
+
+async function hasNoUsers() {
+    const [existing] = await db.select({ id: users.id }).from(users).limit(1)
+    return !existing
+}
+
+/** First registered user becomes the sole verified super admin. */
+async function getBootstrapUserFields() {
+    if (!(await hasNoUsers())) return {}
+    return { isVerified: true, role: ROLES.SUPER_ADMIN }
+}
+
+function assertSuperAdmin(actorUserId: string, actor: Awaited<ReturnType<typeof findUserById>>) {
+    if (!actor || actor.id !== actorUserId || !isSuperAdmin(actor.role)) {
+        throw new AppError('Only super admin can perform this action', 403)
+    }
+}
+
+async function assertUserHasNoRelations(userId: string) {
+    const [customer, order, restock, transaction, target] = await Promise.all([
+        db.select({ id: customers.id }).from(customers).where(eq(customers.createdById, userId)).limit(1),
+        db.select({ id: orders.id }).from(orders).where(eq(orders.createdById, userId)).limit(1),
+        db.select({ id: restockOrders.id }).from(restockOrders).where(eq(restockOrders.createdById, userId)).limit(1),
+        db.select({ id: transactions.id }).from(transactions).where(eq(transactions.createdById, userId)).limit(1),
+        db.select({ id: targets.id }).from(targets).where(eq(targets.userId, userId)).limit(1)
+    ])
+
+    if (customer.length || order.length || restock.length || transaction.length || target.length) {
+        throw new AppError('Cannot delete user with existing records in the system', 400)
+    }
 }
 
 export async function findUserById(id: string, includePassword = false) {
@@ -76,7 +118,8 @@ export async function activateUser(activationToken: string, activationCode: stri
             id: createId(),
             name: decoded.user.name,
             email: decoded.user.email,
-            password: await hashPassword(decoded.user.password)
+            password: await hashPassword(decoded.user.password),
+            ...(await getBootstrapUserFields())
         })
         .returning()
 
@@ -107,6 +150,7 @@ export async function refreshAccessToken(userId: string) {
 export async function createSocialUser(email: string, name: string, avatarUrl: string) {
     let user = await findUserByEmail(email)
     if (!user) {
+        const bootstrap = await getBootstrapUserFields()
         const [created] = await db
             .insert(users)
             .values({
@@ -114,7 +158,8 @@ export async function createSocialUser(email: string, name: string, avatarUrl: s
                 name,
                 email,
                 avatarUrl,
-                isVerified: true
+                isVerified: true,
+                ...bootstrap
             })
             .returning()
         user = created
@@ -179,33 +224,91 @@ export async function listUsers() {
     )
 }
 
-export async function updateUserRole(userId: string, role: string) {
-    const [updated] = await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId)).returning()
+export async function updateUserRole(userId: string, role: string, actorUserId: string) {
+    const actor = await findUserById(actorUserId)
+    assertSuperAdmin(actorUserId, actor)
+
+    const target = await findUserById(userId)
+    if (!target) throw new AppError('User not found', 404)
+    if (isSuperAdmin(target.role)) throw new AppError('Super admin role cannot be changed', 400)
+
+    const normalized = role.toLowerCase()
+    if (normalized === ROLES.SUPER_ADMIN) throw new AppError('Super admin role cannot be assigned', 400)
+    if (normalized !== ROLES.ADMIN && normalized !== 'user') throw new AppError('Invalid role', 400)
+
+    const nextRole = normalized === ROLES.ADMIN ? ROLES.ADMIN : ROLES.USER
+
+    const [updated] = await db.update(users).set({ role: nextRole, updatedAt: new Date() }).where(eq(users.id, userId)).returning()
     if (!updated) throw new AppError('User not found', 404)
     return mapUser({ ...updated, password: null })
 }
 
-export async function deleteUser(userId: string) {
+export async function deleteUser(userId: string, actorUserId: string) {
+    if (userId === actorUserId) throw new AppError('You cannot delete your own account', 400)
+
+    const actor = await findUserById(actorUserId)
+    assertSuperAdmin(actorUserId, actor)
+
+    const target = await findUserById(userId)
+    if (!target) throw new AppError('User not found', 404)
+    if (isSuperAdmin(target.role)) throw new AppError('Super admin account cannot be deleted', 400)
+
+    await assertUserHasNoRelations(userId)
+
+    await db.delete(userRoutes).where(eq(userRoutes.userId, userId))
     const result = await db.delete(users).where(eq(users.id, userId)).returning()
     if (!result.length) throw new AppError('User not found', 404)
 }
 
-export async function addVerifiedUser(name: string, email: string, password: string) {
-    const existing = await findUserByEmail(email)
-    if (existing) throw new AppError('Email already exist', 400)
-
-    await db.insert(users).values({
-        id: createId(),
-        name,
-        email,
-        password: await hashPassword(password),
-        isVerified: true
-    })
+export async function addVerifiedUser(_name: string, _email: string, _password: string) {
+    throw new AppError('Manual user creation is disabled. Users must register through sign up.', 403)
 }
 
-export async function verifyUserById(userId: string) {
+export async function verifyUserById(userId: string, actorUserId: string) {
+    const actor = await findUserById(actorUserId)
+    assertSuperAdmin(actorUserId, actor)
+
+    const target = await findUserById(userId)
+    if (!target) throw new AppError('User Does not exist', 400)
+    if (isSuperAdmin(target.role)) throw new AppError('Super admin is already verified', 400)
+
     const [updated] = await db.update(users).set({ isVerified: true, updatedAt: new Date() }).where(eq(users.id, userId)).returning()
     if (!updated) throw new AppError('User Does not exist', 400)
+    return mapUser({ ...updated, password: null })
+}
+
+export async function requestPasswordReset(email: string) {
+    const user = await findUserByEmail(email)
+    if (!user?.password) {
+        return { resetToken: null as string | null }
+    }
+
+    const resetCode = Math.floor(1000 + Math.random() * 9000).toString()
+    const resetToken = signResetToken({ userId: user.id, email: user.email, resetCode })
+
+    await sendMail({
+        email: user.email,
+        subject: 'Reset your password',
+        template: 'reset-password-mail.ejs',
+        data: { user: { name: user.name }, resetCode }
+    })
+
+    return { resetToken }
+}
+
+export async function resetPassword(resetToken: string, resetCode: string, newPassword: string) {
+    const decoded = verifyResetToken<{ userId: string; email: string; resetCode: string }>(resetToken)
+    if (decoded.resetCode !== resetCode) throw new AppError('Invalid reset code', 400)
+    if (!newPassword || newPassword.length < 6) throw new AppError('Password must be at least 6 characters', 400)
+
+    const [updated] = await db
+        .update(users)
+        .set({ password: await hashPassword(newPassword), updatedAt: new Date() })
+        .where(eq(users.id, decoded.userId))
+        .returning()
+
+    if (!updated) throw new AppError('User not found', 404)
+    return mapUser({ ...updated, password: null })
 }
 
 export async function assignRoute(userId: string, route: string) {

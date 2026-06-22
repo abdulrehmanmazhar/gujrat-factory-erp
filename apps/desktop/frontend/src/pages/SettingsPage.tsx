@@ -1,10 +1,12 @@
 import { PageHeader } from '@/components/shared/PageHeader'
-import { WhatsAppQrCard } from '@/components/settings/WhatsAppQrCard'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { useTheme } from '@/hooks/useTheme'
 import constants from '@/constants/app'
+import { Link } from 'react-router-dom'
+import { MessageCircle } from 'lucide-react'
 
 export default function SettingsPage() {
     const { theme, setTheme } = useTheme()
@@ -31,7 +33,20 @@ export default function SettingsPage() {
                 </CardContent>
             </Card>
 
-            <WhatsAppQrCard />
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <MessageCircle className="size-5" />
+                        WhatsApp
+                    </CardTitle>
+                    <CardDescription>Manage WhatsApp linking, logout, and send queue on the dedicated page</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Button asChild>
+                        <Link to="/whatsapp">Open WhatsApp page</Link>
+                    </Button>
+                </CardContent>
+            </Card>
         </div>
     )
 }

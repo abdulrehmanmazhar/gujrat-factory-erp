@@ -13,10 +13,11 @@ import { Plus } from 'lucide-react'
 import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
 import { getApiErrorMessage } from '@/lib/errors'
+import { isAdminOrAbove } from '@/lib/roles'
 
 export default function SuppliersPage() {
     const user = useSelector(selectCurrentUser)
-    const isAdmin = user?.role?.toLowerCase() === 'admin'
+    const isAdmin = isAdminOrAbove(user?.role)
     const { data, isLoading, refetch } = useGetSuppliersQuery(true)
     const [deactivateSupplier, { isLoading: deactivating }] = useDeactivateSupplierMutation()
     const [search, setSearch] = useState('')

@@ -25,3 +25,11 @@ export function signActivationToken(payload: object) {
 export function verifyActivationToken<T>(token: string) {
     return Jwt.verify(token, appConfig.ACTIVATION_SECRET) as T
 }
+
+export function signResetToken(payload: object) {
+    return Jwt.sign(payload, appConfig.ACTIVATION_SECRET, { expiresIn: '15m' })
+}
+
+export function verifyResetToken<T>(token: string) {
+    return Jwt.verify(token, appConfig.ACTIVATION_SECRET) as T
+}

@@ -2,6 +2,9 @@ import { apiSlice } from '@/redux/api/apiSlice'
 import { createListQueryFn, unwrapData } from '@/lib/api-helpers'
 import type { ApiEnvelope, Order } from '@/types/api'
 
+/** Any order mutation that can change product stock or customer balances. */
+export const ORDER_MUTATION_TAGS = ['Orders', 'Products', 'Customers', 'Transactions'] as const
+
 export const ordersApi = apiSlice.injectEndpoints({
     endpoints: (builder) => ({
         getOrders: builder.query<{ orders: Order[] }, void>({
@@ -13,9 +16,13 @@ export const ordersApi = apiSlice.injectEndpoints({
             transformResponse: (response: ApiEnvelope<{ order: Order }>) => unwrapData(response),
             providesTags: (_r, _e, id) => [{ type: 'Orders', id }]
         }),
-        deleteOrder: builder.mutation<ApiEnvelope<null>, string>({
-            query: (id) => ({ url: `/delete-order/${id}`, method: 'DELETE' }),
-            invalidatesTags: ['Orders']
+        cancelOrder: builder.mutation<ApiEnvelope<{ order: Order }>, { id: string; refundAmount: number }>({
+            query: ({ id, refundAmount }) => ({
+                url: `/cancel-order/${id}`,
+                method: 'POST',
+                body: { refundAmount }
+            }),
+            invalidatesTags: [...ORDER_MUTATION_TAGS]
         }),
         addOrderPayment: builder.mutation<ApiEnvelope<{ order: Order }>, { id: string; payment: number }>({
             query: ({ id, payment }) => ({
@@ -23,7 +30,7 @@ export const ordersApi = apiSlice.injectEndpoints({
                 method: 'POST',
                 body: { payment }
             }),
-            invalidatesTags: ['Orders']
+            invalidatesTags: [...ORDER_MUTATION_TAGS]
         }),
         returnOrderUdhar: builder.mutation<ApiEnvelope<{ order: Order }>, { id: string; payment: number }>({
             query: ({ id, payment }) => ({
@@ -31,7 +38,15 @@ export const ordersApi = apiSlice.injectEndpoints({
                 method: 'POST',
                 body: { payment }
             }),
-            invalidatesTags: ['Orders', 'Customers']
+            invalidatesTags: [...ORDER_MUTATION_TAGS]
+        }),
+        returnOrder: builder.mutation<ApiEnvelope<{ order: Order }>, { id: string; refundAmount: number }>({
+            query: ({ id, refundAmount }) => ({
+                url: `/return-order/${id}`,
+                method: 'POST',
+                body: { refundAmount }
+            }),
+            invalidatesTags: [...ORDER_MUTATION_TAGS]
         }),
         fillCart: builder.mutation<ApiEnvelope<{ order: Order }>, { customerId: string; cart: { productId: string; qty: number }[] }>({
             query: ({ customerId, cart }) => ({
@@ -39,7 +54,7 @@ export const ordersApi = apiSlice.injectEndpoints({
                 method: 'POST',
                 body: { cart }
             }),
-            invalidatesTags: ['Orders', 'Products']
+            invalidatesTags: [...ORDER_MUTATION_TAGS]
         }),
         createOrder: builder.mutation<
             ApiEnvelope<null>,
@@ -49,21 +64,30 @@ export const ordersApi = apiSlice.injectEndpoints({
                 deliveryDate: string
                 message?: string
                 additionalDiscount?: number
+                orderMode?: 'pos' | 'delayed'
+                payment?: number
             }
         >({
-            query: ({ customerId, cart, deliveryDate, message, additionalDiscount }) => ({
+            query: ({ customerId, cart, deliveryDate, message, additionalDiscount, orderMode, payment }) => ({
                 url: `/create-order/${customerId}`,
                 method: 'POST',
-                body: { cart, deliveryDate, message, additionalDiscount: additionalDiscount ?? 0 }
+                body: {
+                    cart,
+                    deliveryDate,
+                    message,
+                    additionalDiscount: additionalDiscount ?? 0,
+                    orderMode: orderMode ?? 'delayed',
+                    payment: payment ?? 0
+                }
             }),
-            invalidatesTags: ['Orders', 'Products', 'Customers']
+            invalidatesTags: [...ORDER_MUTATION_TAGS]
         }),
         deleteCartItem: builder.mutation<ApiEnvelope<null>, { orderId: string; index: number }>({
             query: ({ orderId, index }) => ({
                 url: `/delete-cart/${orderId}/${index}`,
                 method: 'DELETE'
             }),
-            invalidatesTags: ['Orders', 'Products']
+            invalidatesTags: [...ORDER_MUTATION_TAGS]
         }),
         generateInvoices: builder.mutation<Blob, { orderIds: string[] }>({
             query: (body) => ({
@@ -79,9 +103,10 @@ export const ordersApi = apiSlice.injectEndpoints({
 export const {
     useGetOrdersQuery,
     useGetOrderQuery,
-    useDeleteOrderMutation,
+    useCancelOrderMutation,
     useAddOrderPaymentMutation,
     useReturnOrderUdharMutation,
+    useReturnOrderMutation,
     useFillCartMutation,
     useCreateOrderMutation,
     useDeleteCartItemMutation,

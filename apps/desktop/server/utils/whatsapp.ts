@@ -146,6 +146,9 @@ export async function connectWhatsapp(io) {
                 whatsappConnected = true
                 latestQr = null
                 io.emit('whatsapp:connected')
+                import('./whatsappQueue.js')
+                    .then(({ processWhatsAppQueue }) => processWhatsAppQueue())
+                    .catch((error) => console.error('WhatsApp queue flush failed:', error))
             }
         }
 
@@ -158,19 +161,22 @@ export async function connectWhatsapp(io) {
 // Function to log out and clear the session
 export async function logoutWhatsapp(io) {
     try {
+        whatsappConnected = false
+        latestQr = null
+        io.emit('whatsapp:disconnected')
+
         if (sock) {
             await sock.logout()
-            //console.log("Logged out successfully!");
         }
 
-        // Remove stored authentication data
-        fs.rmSync('auth', { recursive: true, force: true })
+        if (fs.existsSync('auth')) {
+            fs.rmSync('auth', { recursive: true, force: true })
+        }
 
-        // Reconnect to generate a new QR
-        //console.log("Restarting WhatsApp session...");
         connectWhatsapp(io)
     } catch (error) {
         console.error('Logout failed:', error)
+        throw error
     }
 }
 

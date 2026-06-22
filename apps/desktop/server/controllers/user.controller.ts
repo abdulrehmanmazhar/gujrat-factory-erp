@@ -86,23 +86,36 @@ export const fetchAllUsers = CatchAsyncError(async (req: Request, res: Response)
 })
 
 export const updateRole = CatchAsyncError(async (req: Request, res: Response) => {
-    const user = await userService.updateUserRole(req.body.id, req.body.role)
+    const user = await userService.updateUserRole(req.body.id, req.body.role, req.user!.id)
     httpResponse(req, res, 201, 'Role updated successfully', { user })
 })
 
 export const deleteUser = CatchAsyncError(async (req: Request, res: Response) => {
-    await userService.deleteUser(param(req.params.id))
+    await userService.deleteUser(param(req.params.id), req.user!.id)
     httpResponse(req, res, 200, 'User deleted successfully', null)
 })
 
-export const addUser = CatchAsyncError(async (req: Request, res: Response) => {
-    await userService.addVerifiedUser(req.body.name, req.body.email, req.body.password)
-    httpResponse(req, res, 201, 'user added successfully', null)
+export const addUser = CatchAsyncError(async (_req: Request, _res: Response) => {
+    throw new AppError('Manual user creation is disabled. Users must register through sign up.', 403)
 })
 
 export const verifyUser = CatchAsyncError(async (req: Request, res: Response) => {
-    await userService.verifyUserById(param(req.params.id))
-    httpResponse(req, res, 201, 'user verified successfully', null)
+    const user = await userService.verifyUserById(param(req.params.id), req.user!.id)
+    httpResponse(req, res, 201, 'user verified successfully', { user })
+})
+
+export const forgotPassword = CatchAsyncError(async (req: Request, res: Response) => {
+    const { email } = req.body
+    if (!email) throw new AppError('Email is required', 400)
+    const result = await userService.requestPasswordReset(email)
+    httpResponse(req, res, 200, 'If an account exists for this email, a reset code has been sent', result)
+})
+
+export const resetPassword = CatchAsyncError(async (req: Request, res: Response) => {
+    const { reset_token, reset_code, new_password } = req.body
+    if (!reset_token || !reset_code || !new_password) throw new AppError('Missing required fields', 400)
+    const user = await userService.resetPassword(reset_token, reset_code, new_password)
+    httpResponse(req, res, 200, 'Password reset successfully', { user })
 })
 
 export const routeAssign = CatchAsyncError(async (req: Request, res: Response) => {

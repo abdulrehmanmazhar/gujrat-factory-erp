@@ -25,9 +25,9 @@ export default function PosPage() {
     const [customerId, setCustomerId] = useState('')
     const [productSearch, setProductSearch] = useState('')
     const [cart, setCart] = useState<CartLine[]>([])
-    const [deliveryDate, setDeliveryDate] = useState(() => new Date().toISOString().slice(0, 10))
     const [message, setMessage] = useState('')
     const [additionalDiscount, setAdditionalDiscount] = useState('0')
+    const [payment, setPayment] = useState('')
 
     const customers = customersData?.customers ?? []
     const products = productsData?.products ?? []
@@ -44,6 +44,7 @@ export default function PosPage() {
     const lineDiscount = cart.reduce((sum, line) => sum + (line.product.discount ?? 0) * line.qty, 0)
     const extraDiscount = Number(additionalDiscount) || 0
     const total = Math.max(0, subtotal - lineDiscount - extraDiscount)
+    const today = new Date().toISOString().slice(0, 10)
 
     const addToCart = (product: Product) => {
         setCart((prev) => {
@@ -86,6 +87,7 @@ export default function PosPage() {
         setCart([])
         setMessage('')
         setAdditionalDiscount('0')
+        setPayment('')
     }
 
     const handlePlaceOrder = async () => {
@@ -97,17 +99,24 @@ export default function PosPage() {
             toast.error('Add at least one product')
             return
         }
-        if (!deliveryDate) {
-            toast.error('Select a delivery date')
+        const paid = payment === '' ? total : Number(payment)
+        if (Number.isNaN(paid) || paid < 0) {
+            toast.error('Enter a valid payment amount')
+            return
+        }
+        if (paid > total) {
+            toast.error('Payment cannot exceed order total')
             return
         }
         try {
             await createOrder({
                 customerId,
                 cart: cart.map(({ productId, qty }) => ({ productId, qty })),
-                deliveryDate,
+                deliveryDate: today,
                 message,
-                additionalDiscount: extraDiscount
+                additionalDiscount: extraDiscount,
+                orderMode: 'pos',
+                payment: paid
             }).unwrap()
             toast.success('Order placed successfully')
             clearCart()
@@ -262,9 +271,10 @@ export default function PosPage() {
                             <Input
                                 id="delivery-date"
                                 type="date"
-                                value={deliveryDate}
-                                onChange={(e) => setDeliveryDate(e.target.value)}
+                                value={today}
+                                disabled
                             />
+                            <p className="text-xs text-muted-foreground">POS orders are delivered immediately.</p>
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="order-message">Message</Label>
@@ -284,6 +294,19 @@ export default function PosPage() {
                                 min={0}
                                 value={additionalDiscount}
                                 onChange={(e) => setAdditionalDiscount(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="pos-payment">Payment received</Label>
+                            <Input
+                                id="pos-payment"
+                                type="number"
+                                min={0}
+                                max={total}
+                                value={payment || (total > 0 ? String(total) : '')}
+                                onChange={(e) => setPayment(e.target.value)}
+                                placeholder="0"
                             />
                         </div>
 

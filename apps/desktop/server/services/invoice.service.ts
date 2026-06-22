@@ -8,7 +8,7 @@ import { customers, users } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
 import { moduleDir } from '../utils/esm.js'
 import { logger } from '../config/logger.js'
-import { formatWhatsAppContact, isWhatsappConnected, sendDocument, sendMessage } from '../utils/whatsapp.js'
+import { formatWhatsAppContact } from '../utils/whatsapp.js'
 import * as orderService from './order.service.js'
 
 const templatesDir = path.join(moduleDir(import.meta.url), '../templates')
@@ -132,12 +132,7 @@ export async function generateOrderInvoicePdf(orderId: string) {
     return generateInvoicesPdf([orderId])
 }
 
-export async function sendOrderReceiptWhatsApp(orderId: string) {
-    if (!isWhatsappConnected()) {
-        logger.warn('WhatsApp not connected; skipping order receipt', { meta: { orderId } })
-        return
-    }
-
+export async function queueOrderInvoiceWhatsApp(orderId: string) {
     const builtOrder = await buildInvoiceOrder(orderId)
     const contact = formatWhatsAppContact(builtOrder.customer.contact)
     if (!contact || !builtOrder.deliveryDate) return
@@ -148,11 +143,17 @@ export async function sendOrderReceiptWhatsApp(orderId: string) {
 
     try {
         const pdfBuffer = await generateOrderInvoicePdf(orderId)
-        await sendMessage(contact, message)
-        await sendDocument(contact, pdfBuffer, fileName)
+        const { enqueueWhatsAppText, enqueueWhatsAppDocument } = await import('../utils/whatsappQueue.js')
+        await enqueueWhatsAppText(contact, message)
+        await enqueueWhatsAppDocument(contact, fileName, pdfBuffer)
     } catch (error) {
-        logger.error('Error sending WhatsApp order receipt', { meta: { error, orderId } })
+        logger.error('Error queueing WhatsApp order invoice', { meta: { error, orderId } })
     }
+}
+
+/** @deprecated use queueOrderInvoiceWhatsApp */
+export async function sendOrderReceiptWhatsApp(orderId: string) {
+    return queueOrderInvoiceWhatsApp(orderId)
 }
 
 export async function generateInvoicesPdf(orderIds: string[]) {

@@ -10,6 +10,9 @@ import OrdersPage from '@/pages/OrdersPage'
 import PaymentsPage from '@/pages/PaymentsPage'
 import SuppliersPage from '@/pages/SuppliersPage'
 import PosPage from '@/pages/PosPage'
+import DelayedOrderPage from '@/pages/DelayedOrderPage'
+import WhatsAppPage from '@/pages/WhatsAppPage'
+import ProfilePage from '@/pages/ProfilePage'
 import SettingsPage from '@/pages/SettingsPage'
 import { Route, Routes } from 'react-router-dom'
 
@@ -34,6 +37,14 @@ export default function Router() {
                     element={<PosPage />}
                 />
                 <Route
+                    path="delayed-orders"
+                    element={<DelayedOrderPage />}
+                />
+                <Route
+                    path="whatsapp"
+                    element={<WhatsAppPage />}
+                />
+                <Route
                     path="payments"
                     element={<PaymentsPage />}
                 />
@@ -52,6 +63,10 @@ export default function Router() {
                 <Route
                     path="community"
                     element={<CommunityPage />}
+                />
+                <Route
+                    path="profile"
+                    element={<ProfilePage />}
                 />
                 <Route
                     path="settings"

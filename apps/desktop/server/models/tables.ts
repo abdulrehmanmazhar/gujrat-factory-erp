@@ -133,8 +133,11 @@ export const orders = sqliteTable('orders', {
     payment: real('payment'),
     discount: real('discount').default(0),
     status: text('status'),
+    orderMode: text('order_mode').notNull().default('delayed'),
+    stockDeducted: integer('stock_deducted', { mode: 'boolean' }).notNull().default(false),
     deliveryStatus: integer('delivery_status', { mode: 'boolean' }).default(false),
     deliveryDate: integer('delivery_date', { mode: 'timestamp_ms' }),
+    returnedAt: integer('returned_at', { mode: 'timestamp_ms' }),
     message: text('message'),
     createdById: text('created_by_id').notNull(),
     createdAt: createdAt(),
@@ -195,6 +198,18 @@ export const productSales = sqliteTable('product_sales', {
     stockQtyLeft: integer('stock_qty_left').notNull(),
     sold: integer('sold').notNull(),
     createdAt: createdAt()
+})
+
+export const whatsappQueue = sqliteTable('whatsapp_queue', {
+    id: text('id').primaryKey(),
+    contact: text('contact').notNull(),
+    kind: text('kind').notNull(),
+    payload: text('payload').notNull(),
+    status: text('status').notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt()
 })
 
 export type User = typeof users.$inferSelect

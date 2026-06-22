@@ -12,7 +12,17 @@ export function PageHeader({ title, description, actions }: { title: string; des
     )
 }
 
-export function RowActions({ onEdit, onDelete, extra }: { onEdit?: () => void; onDelete?: () => void; extra?: React.ReactNode }) {
+export function RowActions({
+    onEdit,
+    onDelete,
+    deleteLabel = 'Delete',
+    extra
+}: {
+    onEdit?: () => void
+    onDelete?: () => void
+    deleteLabel?: string
+    extra?: React.ReactNode
+}) {
     return (
         <div className="flex gap-1">
             {extra}
@@ -30,7 +40,7 @@ export function RowActions({ onEdit, onDelete, extra }: { onEdit?: () => void; o
                     size="sm"
                     className="text-destructive"
                     onClick={onDelete}>
-                    Delete
+                    {deleteLabel}
                 </Button>
             ) : null}
         </div>
