@@ -110,6 +110,12 @@ export interface ActivateUserRequest {
     activation_code: string
 }
 
+export interface SupplierProduct extends Product {
+    supplierSku?: string | null
+    unitCost?: number | null
+    isPreferred?: boolean | null
+}
+
 export interface Supplier {
     id: string
     _id: string
@@ -120,7 +126,90 @@ export interface Supplier {
     email?: string | null
     notes?: string | null
     isActive: boolean
-    products?: Product[]
+    products?: SupplierProduct[]
+}
+
+export interface RestockOrderItem {
+    id: string
+    _id: string
+    productId: string
+    qtyOrdered: number
+    qtyReceived: number
+    unitCost: number
+    lineTotal: number
+    product?: Product
+}
+
+export interface RestockOrder {
+    id: string
+    _id: string
+    supplierId: string
+    referenceNumber?: string | null
+    status: 'draft' | 'ordered' | 'received' | 'cancelled'
+    totalAmount: number
+    notes?: string | null
+    createdById: string
+    orderedAt?: string | null
+    receivedAt?: string | null
+    createdAt?: string
+    supplier?: Supplier | null
+    items?: RestockOrderItem[]
+}
+
+export interface RecipeItem {
+    id: string
+    _id: string
+    ingredientProductId: string
+    qty: number
+    product?: Product
+}
+
+export interface Recipe {
+    id: string
+    _id: string
+    outputProductId: string
+    notes?: string | null
+    outputProduct?: Product | null
+    items?: RecipeItem[]
+}
+
+export interface LabourRate {
+    productId: string
+    ratePerUnit: number
+    product?: Product
+}
+
+export interface Labourer {
+    id: string
+    _id: string
+    name: string
+    contact?: string | null
+    notes?: string | null
+    isActive: boolean
+    rates?: LabourRate[]
+}
+
+export interface LabourConsumption {
+    id: string
+    productId: string
+    qtyConsumed: number
+    product?: Product
+}
+
+export interface LabourProductionEntry {
+    id: string
+    _id: string
+    labourerId: string
+    productId: string
+    qtyProduced: number
+    ratePerUnit: number
+    totalPay: number
+    recipeApplied: boolean
+    notes?: string | null
+    createdAt?: string
+    labourer?: Labourer | null
+    product?: Product | null
+    consumption?: LabourConsumption[]
 }
 
 export interface CartLine {

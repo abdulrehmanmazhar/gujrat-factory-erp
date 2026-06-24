@@ -13,6 +13,9 @@ for (const [src, dest] of copies) {
         continue
     }
 
+    if (fs.existsSync(dest)) {
+        fs.rmSync(dest, { recursive: true, force: true })
+    }
     fs.cpSync(src, dest, { recursive: true })
     console.log(`[postbuild] copied ${src} -> ${dest}`)
 }

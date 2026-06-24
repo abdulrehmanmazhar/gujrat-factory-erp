@@ -16,6 +16,8 @@ import targetRouter from './routes/target.route.js'
 import supplierRouter from './routes/supplier.route.js'
 import restockRouter from './routes/restock.route.js'
 import whatsappRouter from './routes/whatsapp.route.js'
+import recipeRouter from './routes/recipe.route.js'
+import labourRouter from './routes/labour.route.js'
 
 export const app = express()
 
@@ -40,6 +42,8 @@ app.use('/api/v1', targetRouter)
 app.use('/api/v1', supplierRouter)
 app.use('/api/v1', restockRouter)
 app.use('/api/v1', whatsappRouter)
+app.use('/api/v1', recipeRouter)
+app.use('/api/v1', labourRouter)
 
 app.get('/test', (_req, res) => {
     res.status(200).json({

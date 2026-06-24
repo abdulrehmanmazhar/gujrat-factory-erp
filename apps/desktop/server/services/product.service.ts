@@ -195,3 +195,36 @@ export async function getProductById(id: string) {
     const [product] = await db.select().from(products).where(eq(products.id, id)).limit(1)
     return product ?? null
 }
+
+export async function adjustInventoryQty(productId: string, qtyDelta: number, options?: { historyNote?: string; purchasePrice?: number }) {
+    const [product] = await db.select().from(products).where(eq(products.id, productId)).limit(1)
+    if (!product) throw new AppError('Product not found', 404)
+
+    const newStockQty = product.stockQty + qtyDelta
+    if (newStockQty < 0) {
+        throw new AppError(`Insufficient stock for ${product.name}. Available: ${product.stockQty}`, 400)
+    }
+
+    if (qtyDelta !== 0) {
+        await db.insert(productStockHistory).values({
+            id: createId(),
+            productId,
+            qty: Math.abs(qtyDelta),
+            totalBill: 0,
+            purchasePrice: options?.purchasePrice ?? product.purchasePrice ?? 0,
+            recordedAt: new Date()
+        })
+    }
+
+    const [updated] = await db
+        .update(products)
+        .set({
+            stockQty: newStockQty,
+            inStock: newStockQty > 0,
+            updatedAt: new Date()
+        })
+        .where(eq(products.id, productId))
+        .returning()
+
+    return withLegacyId(updated)
+}

@@ -9,6 +9,9 @@ import NotFoundPage from '@/pages/NotFoundPage'
 import OrdersPage from '@/pages/OrdersPage'
 import PaymentsPage from '@/pages/PaymentsPage'
 import SuppliersPage from '@/pages/SuppliersPage'
+import RestockOrdersPage from '@/pages/RestockOrdersPage'
+import RecipesPage from '@/pages/RecipesPage'
+import LabourPage from '@/pages/LabourPage'
 import PosPage from '@/pages/PosPage'
 import DelayedOrderPage from '@/pages/DelayedOrderPage'
 import WhatsAppPage from '@/pages/WhatsAppPage'
@@ -59,6 +62,18 @@ export default function Router() {
                 <Route
                     path="suppliers"
                     element={<SuppliersPage />}
+                />
+                <Route
+                    path="restock-orders"
+                    element={<RestockOrdersPage />}
+                />
+                <Route
+                    path="recipes"
+                    element={<RecipesPage />}
+                />
+                <Route
+                    path="labour"
+                    element={<LabourPage />}
                 />
                 <Route
                     path="community"

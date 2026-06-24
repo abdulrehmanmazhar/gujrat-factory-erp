@@ -212,6 +212,69 @@ export const whatsappQueue = sqliteTable('whatsapp_queue', {
     updatedAt: updatedAt()
 })
 
+export const recipes = sqliteTable(
+    'recipes',
+    {
+        id: text('id').primaryKey(),
+        outputProductId: text('output_product_id').notNull(),
+        notes: text('notes'),
+        createdAt: createdAt(),
+        updatedAt: updatedAt()
+    },
+    (table) => [uniqueIndex('recipes_output_product_idx').on(table.outputProductId)]
+)
+
+export const recipeItems = sqliteTable('recipe_items', {
+    id: text('id').primaryKey(),
+    recipeId: text('recipe_id').notNull(),
+    ingredientProductId: text('ingredient_product_id').notNull(),
+    qty: real('qty').notNull(),
+    createdAt: createdAt()
+})
+
+export const labourers = sqliteTable('labourers', {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    contact: text('contact'),
+    notes: text('notes'),
+    isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt()
+})
+
+export const labourRates = sqliteTable(
+    'labour_rates',
+    {
+        labourerId: text('labourer_id').notNull(),
+        productId: text('product_id').notNull(),
+        ratePerUnit: real('rate_per_unit').notNull(),
+        createdAt: createdAt(),
+        updatedAt: updatedAt()
+    },
+    (table) => [primaryKey({ columns: [table.labourerId, table.productId] })]
+)
+
+export const labourProductionEntries = sqliteTable('labour_production_entries', {
+    id: text('id').primaryKey(),
+    labourerId: text('labourer_id').notNull(),
+    productId: text('product_id').notNull(),
+    qtyProduced: integer('qty_produced').notNull(),
+    ratePerUnit: real('rate_per_unit').notNull(),
+    totalPay: real('total_pay').notNull(),
+    recipeApplied: integer('recipe_applied', { mode: 'boolean' }).notNull().default(false),
+    notes: text('notes'),
+    createdById: text('created_by_id').notNull(),
+    createdAt: createdAt()
+})
+
+export const labourProductionConsumption = sqliteTable('labour_production_consumption', {
+    id: text('id').primaryKey(),
+    entryId: text('entry_id').notNull(),
+    productId: text('product_id').notNull(),
+    qtyConsumed: real('qty_consumed').notNull(),
+    createdAt: createdAt()
+})
+
 export type User = typeof users.$inferSelect
 export type Customer = typeof customers.$inferSelect
 export type Product = typeof products.$inferSelect

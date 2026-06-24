@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
+import { CreateRestockOrderDialog } from '@/components/suppliers/CreateRestockOrderDialog'
 import { SupplierFormDialog } from '@/components/suppliers/SupplierFormDialog'
+import { SupplierProductsDialog } from '@/components/suppliers/SupplierProductsDialog'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { DataTable } from '@/components/shared/DataTable'
 import { PageHeader, RowActions } from '@/components/shared/PageHeader'
@@ -9,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { useDeactivateSupplierMutation, useGetSuppliersQuery } from '@/redux/api/suppliersApi'
 import { selectCurrentUser } from '@/redux/slices/authSlice'
 import type { Supplier } from '@/types/api'
-import { Plus } from 'lucide-react'
+import { Package, Plus, ShoppingCart } from 'lucide-react'
 import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
 import { getApiErrorMessage } from '@/lib/errors'
@@ -23,6 +25,8 @@ export default function SuppliersPage() {
     const [search, setSearch] = useState('')
     const [formOpen, setFormOpen] = useState(false)
     const [editSupplier, setEditSupplier] = useState<Supplier | null>(null)
+    const [productsSupplier, setProductsSupplier] = useState<Supplier | null>(null)
+    const [restockSupplier, setRestockSupplier] = useState<Supplier | null>(null)
     const [deactivateId, setDeactivateId] = useState<string | null>(null)
 
     const filtered = useMemo(() => {
@@ -36,7 +40,7 @@ export default function SuppliersPage() {
         <div>
             <PageHeader
                 title="Suppliers"
-                description="Manage supplier contacts and linked products"
+                description="Manage suppliers, link products, and create restock purchase orders"
                 actions={
                     isAdmin ? (
                         <Button
@@ -79,16 +83,45 @@ export default function SuppliersPage() {
                 rows={filtered as unknown as Record<string, unknown>[]}
                 renderActions={
                     isAdmin
-                        ? (row) => (
-                              <RowActions
-                                  onEdit={() => {
-                                      setEditSupplier(row as unknown as Supplier)
-                                      setFormOpen(true)
-                                  }}
-                                  onDelete={row.isActive ? () => setDeactivateId(String(row.id ?? row._id)) : undefined}
-                              />
+                        ? (row) => {
+                              const supplier = row as unknown as Supplier
+                              return (
+                                  <RowActions
+                                      extra={
+                                          <>
+                                              <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={() => setProductsSupplier(supplier)}>
+                                                  <Package className="size-3.5" /> Products
+                                              </Button>
+                                              {supplier.isActive ? (
+                                                  <Button
+                                                      variant="ghost"
+                                                      size="sm"
+                                                      onClick={() => setRestockSupplier(supplier)}>
+                                                      <ShoppingCart className="size-3.5" /> Restock
+                                                  </Button>
+                                              ) : null}
+                                          </>
+                                      }
+                                      onEdit={() => {
+                                          setEditSupplier(supplier)
+                                          setFormOpen(true)
+                                      }}
+                                      deleteLabel="Deactivate"
+                                      onDelete={supplier.isActive ? () => setDeactivateId(String(supplier.id ?? supplier._id)) : undefined}
+                                  />
+                              )
+                          }
+                        : (row) => (
+                              <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setProductsSupplier(row as unknown as Supplier)}>
+                                  View products
+                              </Button>
                           )
-                        : undefined
                 }
             />
 
@@ -100,6 +133,23 @@ export default function SuppliersPage() {
                     setFormOpen(false)
                     setEditSupplier(null)
                     refetch()
+                }}
+            />
+
+            <SupplierProductsDialog
+                open={!!productsSupplier}
+                onOpenChange={() => setProductsSupplier(null)}
+                supplier={productsSupplier}
+                onSuccess={refetch}
+            />
+
+            <CreateRestockOrderDialog
+                open={!!restockSupplier}
+                onOpenChange={() => setRestockSupplier(null)}
+                defaultSupplier={restockSupplier}
+                onSuccess={() => {
+                    setRestockSupplier(null)
+                    toast.success('Go to Restock orders to manage the new order')
                 }}
             />
 

@@ -8,6 +8,9 @@ import '@/redux/api/productsApi'
 import '@/redux/api/ordersApi'
 import '@/redux/api/usersApi'
 import '@/redux/api/suppliersApi'
+import '@/redux/api/restockApi'
+import '@/redux/api/recipesApi'
+import '@/redux/api/labourApi'
 
 export const store = configureStore({
     reducer: {

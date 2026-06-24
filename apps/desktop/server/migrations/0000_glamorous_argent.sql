@@ -38,8 +38,11 @@ CREATE TABLE `orders` (
 	`payment` real,
 	`discount` real DEFAULT 0,
 	`status` text,
+	`order_mode` text DEFAULT 'delayed' NOT NULL,
+	`stock_deducted` integer DEFAULT false NOT NULL,
 	`delivery_status` integer DEFAULT false,
 	`delivery_date` integer,
+	`returned_at` integer,
 	`message` text,
 	`created_by_id` text NOT NULL,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
@@ -174,4 +177,15 @@ CREATE TABLE `users` (
 	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`);
+CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`);--> statement-breakpoint
+CREATE TABLE `whatsapp_queue` (
+	`id` text PRIMARY KEY NOT NULL,
+	`contact` text NOT NULL,
+	`kind` text NOT NULL,
+	`payload` text NOT NULL,
+	`status` text DEFAULT 'pending' NOT NULL,
+	`attempts` integer DEFAULT 0 NOT NULL,
+	`last_error` text,
+	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
+);
