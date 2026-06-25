@@ -10,6 +10,7 @@ import {
     generateInvoices,
     getAllOrders,
     getOrder,
+    recordOrderRefund,
     returnOrder,
     returnOrderUdhar
 } from '../controllers/order.controller.js'
@@ -21,6 +22,7 @@ router.post('/create-order/:id', isAuthenticated, createOrder)
 router.delete('/delete-cart/:id/:index', isAuthenticated, deleteCart)
 router.post('/add-order/:id', isAuthenticated, addOrder)
 router.post('/add-order-payment/:id', isAuthenticated, addOrderPayment)
+router.post('/add-order-refund/:id', isAuthenticated, recordOrderRefund)
 router.post('/return-order/:id', isAuthenticated, returnOrder)
 router.post('/return-order-udhar/:id', isAuthenticated, returnOrderUdhar)
 router.post('/generate-invoices', isAuthenticated, generateInvoices)

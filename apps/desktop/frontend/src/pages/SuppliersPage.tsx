@@ -66,9 +66,7 @@ export default function SuppliersPage() {
                 loading={isLoading}
                 columns={[
                     { key: 'name', label: 'Name' },
-                    { key: 'contact', label: 'Contact' },
-                    { key: 'businessName', label: 'Business' },
-                    { key: 'email', label: 'Email' },
+                    { key: 'contact', label: 'WhatsApp' },
                     {
                         key: 'products',
                         label: 'Products',

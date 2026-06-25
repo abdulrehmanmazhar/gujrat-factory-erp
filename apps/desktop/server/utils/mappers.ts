@@ -16,7 +16,7 @@ export function withLegacyIds<T extends { id: string }>(rows: T[]) {
 export function mapUser(user: {
     id: string
     name: string
-    email: string
+    contact: string
     role: string
     isVerified: boolean
     avatarPublicId: string | null
@@ -28,8 +28,7 @@ export function mapUser(user: {
     const legacy = withLegacyId(user)
     return {
         ...legacy,
-        avatar: user.avatarPublicId || user.avatarUrl ? { public_id: user.avatarPublicId, url: user.avatarUrl } : undefined,
-        routes: [] as string[]
+        avatar: user.avatarPublicId || user.avatarUrl ? { public_id: user.avatarPublicId, url: user.avatarUrl } : undefined
     }
 }
 

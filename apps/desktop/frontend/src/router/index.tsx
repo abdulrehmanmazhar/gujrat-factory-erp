@@ -7,7 +7,6 @@ import HomePage from '@/pages/HomePage'
 import InventoryPage from '@/pages/InventoryPage'
 import NotFoundPage from '@/pages/NotFoundPage'
 import OrdersPage from '@/pages/OrdersPage'
-import PaymentsPage from '@/pages/PaymentsPage'
 import SuppliersPage from '@/pages/SuppliersPage'
 import RestockOrdersPage from '@/pages/RestockOrdersPage'
 import RecipesPage from '@/pages/RecipesPage'
@@ -46,10 +45,6 @@ export default function Router() {
                 <Route
                     path="whatsapp"
                     element={<WhatsAppPage />}
-                />
-                <Route
-                    path="payments"
-                    element={<PaymentsPage />}
                 />
                 <Route
                     path="inventory"

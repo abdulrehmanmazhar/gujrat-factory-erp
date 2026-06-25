@@ -10,10 +10,9 @@ export interface User {
     id: string
     _id: string
     name: string
-    email: string
+    contact: string
     role: string
     isVerified: boolean
-    routes: string[]
     avatar?: { public_id: string; url: string }
 }
 
@@ -21,14 +20,12 @@ export interface Customer {
     id: string
     _id: string
     name: string
-    businessName?: string | null
     address: string
     contact: string
     udhar: number
-    route?: string | null
     createdById?: string
     createdBy?: string
-    createdByUser?: { name: string }
+    createdByUser?: { name: string; contact?: string }
     createdAt?: string
 }
 
@@ -42,7 +39,7 @@ export interface Product {
     inStock: boolean
     purchasePrice?: number | null
     discount?: number | null
-    history?: { purchasePrice: number; qty: number; totalBill: number }[]
+    history?: { purchasePrice: number; qty: number }[]
     productSale?: { sold: number; createdAt: string }[]
 }
 
@@ -56,11 +53,12 @@ export interface Order {
     _id: string
     orderNumber?: number | null
     customerId: string
-    customerDetails?: { name: string; contact: string; route?: string }
+    customerDetails?: { name: string; contact: string }
     userDetails?: { name: string }
     cart: OrderItem[]
     price?: number | null
     payment?: number | null
+    refunded?: number | null
     discount?: number | null
     status?: string | null
     deliveryStatus?: boolean | null
@@ -73,27 +71,43 @@ export interface Order {
     createdBy?: string
 }
 
-export interface Target {
+export interface CustomerTransaction {
     id: string
     _id: string
-    type: 'sales' | 'orders' | 'quantity'
-    value: number
-    progress: number
-    achieved: boolean
-    startDate: string
-    endDate: string
-    userId: { name: string; id?: string }
-    productId?: { name: string; category?: string } | null
-}
-
-export interface Transaction {
-    id: string
-    _id: string
-    type: string
+    customerId: string
+    orderId?: string | null
+    type: 'sale' | 'refund' | 'udhar_payment' | string
     amount: number
     description: string
+    customer?: { id: string; name: string } | null
     createdAt: string
 }
+
+export interface SupplierTransaction {
+    id: string
+    _id: string
+    supplierId: string
+    restockOrderId?: string | null
+    type: 'payment' | 'refund'
+    amount: number
+    description: string
+    supplier?: Supplier | null
+    createdAt: string
+}
+
+export interface LabourerTransaction {
+    id: string
+    _id: string
+    labourerId: string
+    category: LabourTransactionCategory
+    labourCategory?: LabourTransactionCategory | null
+    amount: number
+    description: string
+    labourer?: Labourer | null
+    createdAt: string
+}
+
+export type LabourTransactionCategory = 'production' | 'advance' | 'bonus' | 'expense' | 'other'
 
 export interface LoginResponse {
     success: boolean
@@ -123,7 +137,6 @@ export interface Supplier {
     contact: string
     businessName?: string | null
     address?: string | null
-    email?: string | null
     notes?: string | null
     isActive: boolean
     products?: SupplierProduct[]
@@ -135,6 +148,7 @@ export interface RestockOrderItem {
     productId: string
     qtyOrdered: number
     qtyReceived: number
+    qtyReturned?: number
     unitCost: number
     lineTotal: number
     product?: Product
@@ -147,6 +161,8 @@ export interface RestockOrder {
     referenceNumber?: string | null
     status: 'draft' | 'ordered' | 'received' | 'cancelled'
     totalAmount: number
+    amountPaid?: number | null
+    amountRefunded?: number | null
     notes?: string | null
     createdById: string
     orderedAt?: string | null

@@ -9,12 +9,10 @@ import {
     logoutUser,
     registrationUser,
     resetPassword,
-    routeAssign,
-    routeAssignDeletion,
-    socialAuth,
     updateAccessToken,
     updatePassword,
     updateRole,
+    updateProfilePicture,
     updateUserInfo,
     verifyUser
 } from '../controllers/user.controller.js'
@@ -29,15 +27,12 @@ router.post('/login', LoginUser)
 router.post('/logout', isAuthenticated, logoutUser)
 router.get('/refresh', updateAccessToken)
 router.get('/me', isAuthenticated, getUserInfo)
-router.post('/social-auth', socialAuth)
 router.put('/update-user-info', isAuthenticated, updateUserInfo)
 router.put('/update-user-password', isAuthenticated, updatePassword)
-// router.put("/update-user-avatar", isAuthenticated, updateProfilePicture)
+router.put('/update-user-avatar', isAuthenticated, updateProfilePicture)
 router.get('/get-all-users-admin', isAuthenticated, authorizeRoles('super_admin'), fetchAllUsers)
 router.put('/update-user-role', isAuthenticated, authorizeRoles('super_admin'), updateRole)
 router.delete('/delete-user/:id', isAuthenticated, authorizeRoles('super_admin'), deleteUser)
 router.put('/verify-user/:id', isAuthenticated, authorizeRoles('super_admin'), verifyUser)
-router.put('/assign-route/:id', isAuthenticated, authorizeRoles('admin'), routeAssign)
-router.delete('/delete-assigned-route/:id/:index', isAuthenticated, authorizeRoles('admin'), routeAssignDeletion)
 
 export default router

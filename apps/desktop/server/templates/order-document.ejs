@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="<%= lang %>" dir="<%= dir %>">
+<head>
+    <meta charset="utf-8" />
+    <title>Order Document</title>
+    <% if (lang === 'ur') { %>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet" />
+    <% } %>
+    <style>
+        <%- fontCss %>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: <%- fontFamily %>;
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            color: #1e293b;
+            font-size: 12px;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .sheet {
+            width: 100%;
+            page-break-after: always;
+        }
+        .sheet:last-child { page-break-after: auto; }
+        /* One third of printable A4 height per slip */
+        .invoice-page {
+            width: 100%;
+            height: <%= slipHeightMm %>;
+            padding: 0;
+            border-bottom: 1px dashed #cbd5e1;
+            page-break-inside: avoid;
+        }
+        .sheet .invoice-page:last-child { border-bottom: none; }
+        .slip-layout {
+            width: 100%;
+            height: <%= slipHeightMm %>;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        .slip-layout td {
+            padding: 0;
+            vertical-align: top;
+        }
+        .slip-header-cell { padding: 1mm 2mm 0.5mm; }
+        .slip-items-cell {
+            height: 100%;
+            padding: 0 2mm;
+            vertical-align: top;
+        }
+        .slip-footer-cell {
+            padding: 0.5mm 2mm 1mm;
+            vertical-align: bottom;
+        }
+        .logo-wrap {
+            text-align: center;
+            margin-bottom: 0.5mm;
+        }
+        .logo-wrap img {
+            max-height: 9mm;
+            max-width: 36mm;
+            object-fit: contain;
+        }
+        .logo-fallback {
+            width: 9mm;
+            height: 9mm;
+            border-radius: 50%;
+            background: #e2e8f0;
+            color: #475569;
+            font-size: 8px;
+            font-weight: 700;
+            display: inline-block;
+            line-height: 9mm;
+            text-align: center;
+        }
+        .company-contact {
+            text-align: center;
+            font-size: 9px;
+            color: #64748b;
+            line-height: 1.15;
+            margin-bottom: 0.5mm;
+        }
+        .doc-type {
+            text-align: center;
+            font-size: 13px;
+            font-weight: 700;
+            color: #0f766e;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin: 0.2mm 0;
+        }
+        .order-meta-line {
+            text-align: center;
+            font-size: 9px;
+            color: #64748b;
+            margin-bottom: 1mm;
+        }
+        .receipt-banner {
+            background: #ecfdf5;
+            border: 1px solid #6ee7b7;
+            border-radius: 2px;
+            padding: 1mm 1.5mm;
+            margin-bottom: 1mm;
+            font-size: 10px;
+            line-height: 1.25;
+        }
+        .receipt-banner strong { color: #047857; }
+        .meta-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            line-height: 1.2;
+        }
+        .meta-table td {
+            vertical-align: top;
+            width: 50%;
+            padding: 0;
+        }
+        .meta-left { text-align: left; }
+        .meta-right { text-align: right; }
+        .meta-table p { margin: 0 0 0.4mm; }
+        .meta-table strong { color: #334155; font-weight: 700; }
+        .items-table {
+            width: 100%;
+            height: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            table-layout: fixed;
+        }
+        .items-table th {
+            background: #0f766e;
+            color: #fff;
+            padding: 0.8mm 1.2mm;
+            text-align: left;
+            font-weight: 700;
+            font-size: 10px;
+            border: 1px solid #0d6b63;
+        }
+        html[dir="rtl"] .items-table th { text-align: right; }
+        .items-table td {
+            padding: 0.6mm 1.2mm;
+            border: 1px solid #e2e8f0;
+            vertical-align: middle;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+        .items-table tr:nth-child(even) td { background: #f8fafc; }
+        .items-table tr.empty-row td {
+            color: transparent;
+            border-color: #f1f5f9;
+            background: #fff !important;
+        }
+        .col-num { width: 6%; text-align: center; }
+        .col-qty { width: 8%; text-align: center; }
+        .col-price, .col-disc, .col-total { width: 13%; text-align: right; }
+        html[dir="rtl"] .col-price,
+        html[dir="rtl"] .col-disc,
+        html[dir="rtl"] .col-total { text-align: left; }
+        .col-desc { width: 47%; }
+        .totals-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+        .totals-table td { vertical-align: bottom; padding: 0; }
+        .message-box {
+            font-size: 10px;
+            color: #475569;
+            line-height: 1.25;
+            text-align: left;
+            padding-right: 3mm;
+        }
+        html[dir="rtl"] .message-box {
+            text-align: right;
+            padding-right: 0;
+            padding-left: 3mm;
+        }
+        .totals-box {
+            width: 50mm;
+            margin-left: auto;
+        }
+        html[dir="rtl"] .totals-box { margin-left: 0; margin-right: auto; }
+        .totals-line {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .totals-line td {
+            padding: 0.3mm 0;
+            vertical-align: baseline;
+        }
+        .totals-line .label { text-align: left; padding-right: 3mm; }
+        .totals-line .value { text-align: right; white-space: nowrap; }
+        html[dir="rtl"] .totals-line .label { text-align: right; padding-right: 0; padding-left: 3mm; }
+        html[dir="rtl"] .totals-line .value { text-align: left; }
+        .totals-line.grand td {
+            font-weight: 700;
+            font-size: 12px;
+            color: #0f766e;
+            border-top: 1px solid #0f766e;
+            padding-top: 1mm;
+        }
+        .continued {
+            font-size: 9px;
+            color: #64748b;
+            text-align: right;
+            font-style: italic;
+        }
+        html[dir="rtl"] .continued { text-align: left; }
+        .footer-note {
+            text-align: center;
+            font-size: 9px;
+            color: #94a3b8;
+            margin-top: 1mm;
+        }
+    </style>
+</head>
+<body>
+    <% pages.forEach(function(page) { %>
+    <div class="sheet">
+        <% page.slips.filter(function(slip) { return slip; }).forEach(function(slip) { %>
+        <div class="invoice-page">
+            <table class="slip-layout" cellspacing="0" cellpadding="0">
+                <tr>
+                    <td class="slip-header-cell">
+                        <div class="logo-wrap">
+                            <% if (logoDataUrl) { %>
+                            <img src="<%= logoDataUrl %>" alt="Logo" />
+                            <% } else { %>
+                            <span class="logo-fallback">LOGO</span>
+                            <% } %>
+                        </div>
+
+                        <div class="company-contact">
+                            <%= company.address %> · <%= labels.tel %>: <%= company.phone %>
+                        </div>
+
+                        <div class="doc-type"><%= slip.documentTitle %></div>
+                        <div class="order-meta-line">
+                            <%= labels.orderNumber %><%= slip.orderNumber ?? '—' %>
+                            <% if (slip.partTotal > 1) { %>
+                            · <%= formatPage(slip.partIndex, slip.partTotal) %>
+                            <% } %>
+                        </div>
+
+                        <% if (slip.receipt) { %>
+                        <div class="receipt-banner">
+                            <strong><%= slip.receipt.type %></strong><br />
+                            <%= labels.amount %>: <%= labels.pkr %> <%= Number(slip.receipt.amount).toLocaleString() %><br />
+                            <%= labels.date %>: <%= slip.receipt.date %><br />
+                            <% if (slip.receipt.description) { %><%= labels.note %>: <%= slip.receipt.description %><% } %>
+                        </div>
+                        <% } %>
+
+                        <table class="meta-table" cellspacing="0" cellpadding="0">
+                            <tr>
+                                <td class="meta-left" align="left" valign="top">
+                                    <p><strong><%= labels.customer %>:</strong> <%= slip.customer.name %></p>
+                                    <p><strong><%= labels.contact %>:</strong> <%= slip.customer.contact %></p>
+                                    <p><strong><%= labels.address %>:</strong> <%= slip.customer.address %></p>
+                                    <p><strong><%= labels.prevDues %>:</strong> <%= labels.pkr %> <%= Number(slip.customer.udhar ?? 0).toLocaleString() %></p>
+                                </td>
+                                <td class="meta-right" align="right" valign="top">
+                                    <p><strong><%= labels.booking %>:</strong> <%= slip.bookingDate %></p>
+                                    <p><strong><%= labels.delivery %>:</strong> <%= slip.deliveryDate %></p>
+                                    <p><strong><%= labels.bookedBy %>:</strong> <%= slip.orderBooker %></p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="slip-items-cell" height="100%">
+                        <table class="items-table" cellspacing="0" cellpadding="0" height="100%">
+                            <thead>
+                                <tr>
+                                    <th class="col-num">#</th>
+                                    <th class="col-desc"><%= labels.description %></th>
+                                    <th class="col-qty"><%= labels.qty %></th>
+                                    <th class="col-price"><%= labels.unit %></th>
+                                    <th class="col-disc"><%= labels.disc %></th>
+                                    <th class="col-total"><%= labels.total %></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <% slip.paddedLines.forEach(function(line, index) { %>
+                                <tr class="<%= line ? '' : 'empty-row' %>" style="height: <%= itemRowHeightPercent %>%;">
+                                    <td class="col-num"><%= line ? slip.lineNumberOffset + index + 1 : '&nbsp;' %></td>
+                                    <td class="col-desc"><%= line ? line.description : '&nbsp;' %></td>
+                                    <td class="col-qty"><%= line ? line.qty : '&nbsp;' %></td>
+                                    <td class="col-price"><%= line ? Number(line.unitPrice).toLocaleString() : '&nbsp;' %></td>
+                                    <td class="col-disc"><%= line ? Number(line.discount).toLocaleString() : '&nbsp;' %></td>
+                                    <td class="col-total"><%= line ? Number(line.total).toLocaleString() : '&nbsp;' %></td>
+                                </tr>
+                                <% }); %>
+                            </tbody>
+                        </table>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="slip-footer-cell">
+                        <% if (slip.showTotals) { %>
+                        <table class="totals-table" cellspacing="0" cellpadding="0">
+                            <tr>
+                                <td>
+                                    <% if (slip.message) { %>
+                                    <div class="message-box"><strong><%= labels.message %>:</strong> <%= slip.message %></div>
+                                    <% } %>
+                                </td>
+                                <td align="right">
+                                    <div class="totals-box">
+                                        <table class="totals-line" cellspacing="0" cellpadding="0">
+                                            <tr>
+                                                <td class="label"><%= labels.subtotal %></td>
+                                                <td class="value"><%= labels.pkr %> <%= Number(slip.price).toLocaleString() %></td>
+                                            </tr>
+                                            <tr>
+                                                <td class="label"><%= labels.discount %></td>
+                                                <td class="value"><%= labels.pkr %> <%= Number(slip.discount).toLocaleString() %></td>
+                                            </tr>
+                                            <% if (slip.paid > 0 || slip.receipt) { %>
+                                            <tr>
+                                                <td class="label"><%= labels.paid %></td>
+                                                <td class="value"><%= labels.pkr %> <%= Number(slip.paid).toLocaleString() %></td>
+                                            </tr>
+                                            <% } %>
+                                            <% if (slip.outstanding > 0) { %>
+                                            <tr>
+                                                <td class="label"><%= labels.outstanding %></td>
+                                                <td class="value"><%= labels.pkr %> <%= Number(slip.outstanding).toLocaleString() %></td>
+                                            </tr>
+                                            <% } %>
+                                            <tr class="grand">
+                                                <td class="label"><%= labels.grandTotal %></td>
+                                                <td class="value"><%= labels.pkr %> <%= Number(slip.grandTotal).toLocaleString() %></td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                        <% } else { %>
+                        <div class="continued"><%= labels.continued %></div>
+                        <% } %>
+                        <div class="footer-note"><%= labels.thankYou %></div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        <% }); %>
+    </div>
+    <% }); %>
+</body>
+</html>

@@ -1,10 +1,10 @@
 import fs from 'node:fs'
 
 const copies = [
-    ['mails', 'dist/mails'],
     ['templates', 'dist/templates'],
     ['migrations', 'dist/migrations'],
-    ['public', 'dist/public']
+    ['public', 'dist/public'],
+    ['rclone', 'dist/rclone']
 ]
 
 for (const [src, dest] of copies) {

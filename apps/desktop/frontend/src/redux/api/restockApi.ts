@@ -2,7 +2,7 @@ import { apiSlice } from '@/redux/api/apiSlice'
 import { unwrapData } from '@/lib/api-helpers'
 import type { ApiEnvelope, RestockOrder } from '@/types/api'
 
-export const RESTOCK_MUTATION_TAGS = ['RestockOrders', 'Products', 'Suppliers', 'Transactions'] as const
+export const RESTOCK_MUTATION_TAGS = ['RestockOrders', 'Products', 'Suppliers', 'SupplierTransactions'] as const
 
 type RestockItemInput = { productId: string; qtyOrdered: number; unitCost: number }
 
@@ -62,6 +62,25 @@ export const restockApi = apiSlice.injectEndpoints({
         cancelRestockOrder: builder.mutation<ApiEnvelope<{ order: RestockOrder }>, string>({
             query: (id) => ({ url: `/restock-orders/${id}/cancel`, method: 'POST' }),
             invalidatesTags: [...RESTOCK_MUTATION_TAGS]
+        }),
+        recordRestockPayment: builder.mutation<ApiEnvelope<{ order: RestockOrder }>, { id: string; amount: number; notes?: string }>({
+            query: ({ id, amount, notes }) => ({
+                url: `/restock-orders/${id}/payments`,
+                method: 'POST',
+                body: { amount, notes }
+            }),
+            invalidatesTags: [...RESTOCK_MUTATION_TAGS]
+        }),
+        recordRestockRefund: builder.mutation<
+            ApiEnvelope<{ order: RestockOrder }>,
+            { id: string; returnedItems: { itemId: string; qtyReturned: number }[]; amount?: number; notes?: string }
+        >({
+            query: ({ id, amount, notes, returnedItems }) => ({
+                url: `/restock-orders/${id}/refunds`,
+                method: 'POST',
+                body: { returnedItems, ...(amount !== undefined ? { amount } : {}), notes }
+            }),
+            invalidatesTags: [...RESTOCK_MUTATION_TAGS]
         })
     })
 })
@@ -73,5 +92,7 @@ export const {
     useAddRestockOrderItemMutation,
     useMarkRestockOrderedMutation,
     useReceiveRestockOrderMutation,
-    useCancelRestockOrderMutation
+    useCancelRestockOrderMutation,
+    useRecordRestockPaymentMutation,
+    useRecordRestockRefundMutation
 } = restockApi

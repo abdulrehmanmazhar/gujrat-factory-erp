@@ -1,7 +1,9 @@
 import { relations } from 'drizzle-orm'
 import {
-    customerOrders,
+    customerTransactions,
     customers,
+    labourerTransactions,
+    labourers,
     orderItems,
     orders,
     productSales,
@@ -10,35 +12,52 @@ import {
     restockOrderItems,
     restockOrders,
     supplierProducts,
+    supplierTransactions,
     suppliers,
-    targets,
-    transactions,
-    userRoutes,
     users
 } from './tables.js'
 
 export const usersRelations = relations(users, ({ many }) => ({
-    routes: many(userRoutes),
     customers: many(customers),
     orders: many(orders),
-    targets: many(targets),
-    transactions: many(transactions),
+    customerTransactions: many(customerTransactions),
+    supplierTransactions: many(supplierTransactions),
+    labourerTransactions: many(labourerTransactions),
     restockOrders: many(restockOrders)
-}))
-
-export const userRoutesRelations = relations(userRoutes, ({ one }) => ({
-    user: one(users, { fields: [userRoutes.userId], references: [users.id] })
 }))
 
 export const customersRelations = relations(customers, ({ one, many }) => ({
     createdBy: one(users, { fields: [customers.createdById], references: [users.id] }),
-    orders: many(customerOrders),
-    productSales: many(productSales)
+    orders: many(orders),
+    productSales: many(productSales),
+    transactions: many(customerTransactions)
 }))
 
-export const customerOrdersRelations = relations(customerOrders, ({ one }) => ({
-    customer: one(customers, { fields: [customerOrders.customerId], references: [customers.id] }),
-    order: one(orders, { fields: [customerOrders.orderId], references: [orders.id] })
+export const customerTransactionsRelations = relations(customerTransactions, ({ one }) => ({
+    customer: one(customers, { fields: [customerTransactions.customerId], references: [customers.id] }),
+    order: one(orders, { fields: [customerTransactions.orderId], references: [orders.id] }),
+    createdBy: one(users, { fields: [customerTransactions.createdById], references: [users.id] })
+}))
+
+export const suppliersRelations = relations(suppliers, ({ many }) => ({
+    products: many(supplierProducts),
+    restockOrders: many(restockOrders),
+    transactions: many(supplierTransactions)
+}))
+
+export const supplierTransactionsRelations = relations(supplierTransactions, ({ one }) => ({
+    supplier: one(suppliers, { fields: [supplierTransactions.supplierId], references: [suppliers.id] }),
+    restockOrder: one(restockOrders, { fields: [supplierTransactions.restockOrderId], references: [restockOrders.id] }),
+    createdBy: one(users, { fields: [supplierTransactions.createdById], references: [users.id] })
+}))
+
+export const labourersRelations = relations(labourers, ({ many }) => ({
+    transactions: many(labourerTransactions)
+}))
+
+export const labourerTransactionsRelations = relations(labourerTransactions, ({ one }) => ({
+    labourer: one(labourers, { fields: [labourerTransactions.labourerId], references: [labourers.id] }),
+    createdBy: one(users, { fields: [labourerTransactions.createdById], references: [users.id] })
 }))
 
 export const productsRelations = relations(products, ({ many }) => ({
@@ -46,17 +65,11 @@ export const productsRelations = relations(products, ({ many }) => ({
     orderItems: many(orderItems),
     supplierProducts: many(supplierProducts),
     restockOrderItems: many(restockOrderItems),
-    productSales: many(productSales),
-    targets: many(targets)
+    productSales: many(productSales)
 }))
 
 export const productStockHistoryRelations = relations(productStockHistory, ({ one }) => ({
     product: one(products, { fields: [productStockHistory.productId], references: [products.id] })
-}))
-
-export const suppliersRelations = relations(suppliers, ({ many }) => ({
-    products: many(supplierProducts),
-    restockOrders: many(restockOrders)
 }))
 
 export const supplierProductsRelations = relations(supplierProducts, ({ one }) => ({
@@ -67,7 +80,8 @@ export const supplierProductsRelations = relations(supplierProducts, ({ one }) =
 export const restockOrdersRelations = relations(restockOrders, ({ one, many }) => ({
     supplier: one(suppliers, { fields: [restockOrders.supplierId], references: [suppliers.id] }),
     createdBy: one(users, { fields: [restockOrders.createdById], references: [users.id] }),
-    items: many(restockOrderItems)
+    items: many(restockOrderItems),
+    transactions: many(supplierTransactions)
 }))
 
 export const restockOrderItemsRelations = relations(restockOrderItems, ({ one }) => ({
@@ -79,23 +93,12 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     customer: one(customers, { fields: [orders.customerId], references: [customers.id] }),
     createdBy: one(users, { fields: [orders.createdById], references: [users.id] }),
     items: many(orderItems),
-    transactions: many(transactions),
-    customerLinks: many(customerOrders)
+    transactions: many(customerTransactions)
 }))
 
 export const orderItemsRelations = relations(orderItems, ({ one }) => ({
     order: one(orders, { fields: [orderItems.orderId], references: [orders.id] }),
     product: one(products, { fields: [orderItems.productId], references: [products.id] })
-}))
-
-export const transactionsRelations = relations(transactions, ({ one }) => ({
-    order: one(orders, { fields: [transactions.orderId], references: [orders.id] }),
-    createdBy: one(users, { fields: [transactions.createdById], references: [users.id] })
-}))
-
-export const targetsRelations = relations(targets, ({ one }) => ({
-    user: one(users, { fields: [targets.userId], references: [users.id] }),
-    product: one(products, { fields: [targets.productId], references: [products.id] })
 }))
 
 export const productSalesRelations = relations(productSales, ({ one }) => ({

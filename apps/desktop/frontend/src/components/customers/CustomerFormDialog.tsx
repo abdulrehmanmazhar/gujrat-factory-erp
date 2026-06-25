@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAddCustomerMutation, useEditCustomerMutation } from '@/redux/api/customersApi'
 import type { Customer } from '@/types/api'
+import { isValidWhatsAppContact, WHATSAPP_NUMBER_HINT } from '@/lib/phone'
 import { toast } from 'sonner'
 
 export function CustomerFormDialog({
@@ -22,28 +23,28 @@ export function CustomerFormDialog({
     const [editCustomer, { isLoading: editing }] = useEditCustomerMutation()
     const [form, setForm] = useState({
         name: '',
-        businessName: '',
         address: '',
-        contact: '',
-        route: ''
+        contact: ''
     })
 
     useEffect(() => {
         if (customer) {
             setForm({
                 name: customer.name,
-                businessName: customer.businessName ?? '',
                 address: customer.address,
-                contact: customer.contact,
-                route: customer.route ?? ''
+                contact: customer.contact
             })
         } else {
-            setForm({ name: '', businessName: '', address: '', contact: '', route: '' })
+            setForm({ name: '', address: '', contact: '' })
         }
     }, [customer, open])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+        if (!isValidWhatsAppContact(form.contact)) {
+            toast.error(`Enter a valid WhatsApp number (${WHATSAPP_NUMBER_HINT})`)
+            return
+        }
         try {
             if (customer) {
                 await editCustomer({ id: customer.id ?? customer._id, ...form }).unwrap()
@@ -78,19 +79,15 @@ export function CustomerFormDialog({
                         />
                     </div>
                     <div className="space-y-2">
-                        <Label>Business Name</Label>
+                        <Label>WhatsApp number</Label>
                         <Input
-                            value={form.businessName}
-                            onChange={(e) => setForm({ ...form, businessName: e.target.value })}
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Contact</Label>
-                        <Input
+                            type="tel"
                             value={form.contact}
                             onChange={(e) => setForm({ ...form, contact: e.target.value })}
+                            placeholder="03XX XXXXXXX"
                             required
                         />
+                        <p className="text-xs text-muted-foreground">{WHATSAPP_NUMBER_HINT}</p>
                     </div>
                     <div className="space-y-2">
                         <Label>Address</Label>
@@ -98,13 +95,6 @@ export function CustomerFormDialog({
                             value={form.address}
                             onChange={(e) => setForm({ ...form, address: e.target.value })}
                             required
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Route</Label>
-                        <Input
-                            value={form.route}
-                            onChange={(e) => setForm({ ...form, route: e.target.value })}
                         />
                     </div>
                     <DialogFooter>

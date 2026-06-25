@@ -1,6 +1,6 @@
 import { apiSlice } from '@/redux/api/apiSlice'
 import { createListQueryFn, unwrapData } from '@/lib/api-helpers'
-import type { ApiEnvelope, Target, User } from '@/types/api'
+import type { ApiEnvelope, CustomerTransaction, SupplierTransaction, User } from '@/types/api'
 
 export const usersApi = apiSlice.injectEndpoints({
     endpoints: (builder) => ({
@@ -19,34 +19,6 @@ export const usersApi = apiSlice.injectEndpoints({
         verifyUser: builder.mutation<ApiEnvelope<null>, string>({
             query: (id) => ({ url: `/verify-user/${id}`, method: 'PUT' }),
             invalidatesTags: ['Users']
-        }),
-        assignRoute: builder.mutation<ApiEnvelope<null>, { id: string; route: string }>({
-            query: ({ id, route }) => ({ url: `/assign-route/${id}`, method: 'PUT', body: { route } }),
-            invalidatesTags: ['Users']
-        })
-    })
-})
-
-export const targetsApi = apiSlice.injectEndpoints({
-    endpoints: (builder) => ({
-        getTargets: builder.query<{ targets: Target[]; count: number }, void>({
-            queryFn: createListQueryFn('/gell-all-targets', { targets: [], count: 0 }),
-            providesTags: ['Targets']
-        }),
-        createTarget: builder.mutation<
-            ApiEnvelope<{ target: Target }>,
-            { userId: string; type: string; value: number; productId?: string; startDate: string; endDate: string }
-        >({
-            query: ({ userId, ...body }) => ({
-                url: `/create-target/${userId}`,
-                method: 'POST',
-                body
-            }),
-            invalidatesTags: ['Targets']
-        }),
-        deleteTarget: builder.mutation<ApiEnvelope<null>, string>({
-            query: (id) => ({ url: `/delete-target/${id}`, method: 'DELETE' }),
-            invalidatesTags: ['Targets']
         })
     })
 })
@@ -56,11 +28,25 @@ export const analyticsApi = apiSlice.injectEndpoints({
         getSales: builder.mutation<{ sales: unknown[]; type?: string }, { dateRange: string; type?: string; startDate?: string; endDate?: string }>({
             query: (body) => ({ url: '/get-sales', method: 'POST', body }),
             transformResponse: (response: ApiEnvelope<{ sales: unknown[]; type?: string }>) => unwrapData(response)
+        }),
+        getRecentTransactions: builder.query<
+            { customerTransactions: CustomerTransaction[]; supplierTransactions: SupplierTransaction[] },
+            number | void
+        >({
+            query: (limit = 10) => ({
+                url: '/recent-transactions',
+                params: { limit }
+            }),
+            transformResponse: (
+                response: ApiEnvelope<{
+                    customerTransactions: CustomerTransaction[]
+                    supplierTransactions: SupplierTransaction[]
+                }>
+            ) => unwrapData(response),
+            providesTags: ['CustomerTransactions', 'SupplierTransactions']
         })
     })
 })
 
-export const { useGetUsersQuery, useDeleteUserMutation, useUpdateUserRoleMutation, useVerifyUserMutation, useAssignRouteMutation } = usersApi
-
-export const { useGetTargetsQuery, useCreateTargetMutation, useDeleteTargetMutation } = targetsApi
-export const { useGetSalesMutation } = analyticsApi
+export const { useGetUsersQuery, useDeleteUserMutation, useUpdateUserRoleMutation, useVerifyUserMutation } = usersApi
+export const { useGetSalesMutation, useGetRecentTransactionsQuery } = analyticsApi

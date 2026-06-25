@@ -5,6 +5,7 @@ import { AppError } from '../utils/errors.js'
 import { param } from '../utils/params.js'
 import * as orderService from '../services/order.service.js'
 import * as invoiceService from '../services/invoice.service.js'
+import { resolveDocumentLanguage } from '../services/document.service.js'
 
 export const createCart = CatchAsyncError(async (req: Request, res: Response) => {
     const order = await orderService.createCart(param(req.params.id), req.user!.id, req.body.cart)
@@ -66,6 +67,15 @@ export const returnOrder = CatchAsyncError(async (req: Request, res: Response) =
     httpResponse(req, res, 200, 'Order returned successfully', { order })
 })
 
+export const recordOrderRefund = CatchAsyncError(async (req: Request, res: Response) => {
+    const refundAmount = parseFloat(req.body.refundAmount)
+    if (typeof refundAmount !== 'number' || isNaN(refundAmount) || refundAmount <= 0) {
+        throw new AppError('refundAmount must be a positive number', 400)
+    }
+    const order = await orderService.recordOrderRefund(param(req.params.id), refundAmount, req.user!.id, req.body.notes)
+    httpResponse(req, res, 200, 'Refund recorded successfully', { order })
+})
+
 export const returnOrderUdhar = CatchAsyncError(async (req: Request, res: Response) => {
     const { payment } = req.body
     if (typeof payment !== 'number' || isNaN(payment) || payment < 0) {
@@ -80,7 +90,7 @@ export const generateInvoices = CatchAsyncError(async (req: Request, res: Respon
     if (!Array.isArray(orderIds) || !orderIds.length) {
         throw new AppError('orderIds array is required', 400)
     }
-    const pdfBuffer = await invoiceService.generateInvoicesPdf(orderIds)
+    const pdfBuffer = await invoiceService.generateInvoicesPdf(orderIds, resolveDocumentLanguage(req))
     const filename = `Orders-${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}.pdf`
     res.setHeader('Content-Type', 'application/pdf')
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)

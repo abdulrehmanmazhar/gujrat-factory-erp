@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { useAddOrderPaymentMutation, useCancelOrderMutation, useReturnOrderMutation, useReturnOrderUdharMutation } from '@/redux/api/ordersApi'
+import { useAddOrderPaymentMutation, useCancelOrderMutation, useRecordOrderRefundMutation, useReturnOrderMutation } from '@/redux/api/ordersApi'
 import type { Order } from '@/types/api'
 import { getApiErrorMessage } from '@/lib/errors'
 import { toast } from 'sonner'
@@ -15,6 +15,10 @@ function orderPayable(order: Order) {
 
 function orderOutstanding(order: Order) {
     return Math.max(0, orderPayable(order) - (order.payment ?? 0))
+}
+
+function orderRefundable(order: Order) {
+    return Math.max(0, (order.payment ?? 0) - (order.refunded ?? 0))
 }
 
 export function OrderDetailDialog({ open, onOpenChange, order }: { open: boolean; onOpenChange: (open: boolean) => void; order: Order | null }) {
@@ -34,13 +38,19 @@ export function OrderDetailDialog({ open, onOpenChange, order }: { open: boolean
                             <span className="text-muted-foreground">Customer:</span> {order.customerDetails?.name}
                         </p>
                         <p>
-                            <span className="text-muted-foreground">Route:</span> {order.customerDetails?.route ?? '—'}
-                        </p>
-                        <p>
                             <span className="text-muted-foreground">Total:</span> {orderPayable(order)}
                         </p>
                         <p>
                             <span className="text-muted-foreground">Paid:</span> {order.payment ?? 0}
+                        </p>
+                        <p>
+                            <span className="text-muted-foreground">Refunded:</span> {order.refunded ?? 0}
+                        </p>
+                        <p>
+                            <span className="text-muted-foreground">Outstanding:</span> {orderOutstanding(order)}
+                        </p>
+                        <p>
+                            <span className="text-muted-foreground">Refundable:</span> {orderRefundable(order)}
                         </p>
                         <p>
                             <span className="text-muted-foreground">Mode:</span> {order.orderMode === 'pos' ? 'POS' : 'Delayed'}
@@ -87,18 +97,15 @@ export function PaymentDialog({
     open,
     onOpenChange,
     order,
-    onSuccess,
-    mode = 'payment'
+    onSuccess
 }: {
     open: boolean
     onOpenChange: (open: boolean) => void
     order: Order | null
     onSuccess: () => void
-    mode?: 'payment' | 'udhar'
 }) {
     const [payment, setPayment] = useState('')
     const [addPayment, { isLoading: paying }] = useAddOrderPaymentMutation()
-    const [returnUdhar, { isLoading: returning }] = useReturnOrderUdharMutation()
 
     useEffect(() => {
         setPayment('')
@@ -111,14 +118,17 @@ export function PaymentDialog({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         const amount = Number(payment)
-        if (amount < 0) return
+        if (amount <= 0) {
+            toast.error('Enter a positive payment amount')
+            return
+        }
+        if (amount > outstanding) {
+            toast.error(`Payment cannot exceed outstanding amount (${outstanding})`)
+            return
+        }
         try {
             const id = order.id ?? order._id
-            if (mode === 'udhar') {
-                await returnUdhar({ id, payment: amount }).unwrap()
-            } else {
-                await addPayment({ id, payment: amount }).unwrap()
-            }
+            await addPayment({ id, payment: amount }).unwrap()
             toast.success('Payment recorded')
             onSuccess()
         } catch (err) {
@@ -132,22 +142,124 @@ export function PaymentDialog({
             onOpenChange={onOpenChange}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>{mode === 'udhar' ? 'Udhar Payment' : 'Add Payment'}</DialogTitle>
+                    <DialogTitle>Add payment</DialogTitle>
                 </DialogHeader>
                 <form
                     onSubmit={handleSubmit}
                     className="space-y-3">
                     <p className="text-sm text-muted-foreground">Outstanding: {outstanding}</p>
-                    <Input
-                        type="number"
-                        value={payment}
-                        onChange={(e) => setPayment(e.target.value)}
-                        required
-                    />
+                    <div className="space-y-2">
+                        <Label htmlFor="payment-amount">Amount</Label>
+                        <Input
+                            id="payment-amount"
+                            type="number"
+                            min={0}
+                            max={outstanding}
+                            step="any"
+                            value={payment}
+                            onChange={(e) => setPayment(e.target.value)}
+                            required
+                        />
+                    </div>
                     <Button
                         type="submit"
-                        disabled={paying || returning}>
+                        disabled={paying}>
                         Submit
+                    </Button>
+                </form>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+export function RefundOrderDialog({
+    open,
+    onOpenChange,
+    order,
+    onSuccess
+}: {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    order: Order | null
+    onSuccess: () => void
+}) {
+    const [refundAmount, setRefundAmount] = useState('')
+    const [notes, setNotes] = useState('')
+    const [recordRefund, { isLoading }] = useRecordOrderRefundMutation()
+
+    useEffect(() => {
+        setRefundAmount('')
+        setNotes('')
+    }, [open, order])
+
+    if (!order) return null
+
+    const refundable = orderRefundable(order)
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        const amount = Number(refundAmount)
+        if (amount <= 0) {
+            toast.error('Enter a positive refund amount')
+            return
+        }
+        if (amount > refundable) {
+            toast.error(`Refund cannot exceed refundable amount (${refundable})`)
+            return
+        }
+        try {
+            await recordRefund({
+                id: order.id ?? order._id,
+                refundAmount: amount,
+                notes: notes.trim() || undefined
+            }).unwrap()
+            toast.success('Refund recorded')
+            onSuccess()
+        } catch (err) {
+            toast.error(getApiErrorMessage(err, 'Refund failed'))
+        }
+    }
+
+    return (
+        <Dialog
+            open={open}
+            onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Record refund — order #{order.orderNumber ?? order._id.slice(0, 8)}</DialogTitle>
+                </DialogHeader>
+                <form
+                    onSubmit={handleSubmit}
+                    className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                        Paid: {order.payment ?? 0} · Already refunded: {order.refunded ?? 0} · Refundable: {refundable}
+                    </p>
+                    <div className="space-y-2">
+                        <Label htmlFor="refund-installment-amount">Refund amount</Label>
+                        <Input
+                            id="refund-installment-amount"
+                            type="number"
+                            min={0}
+                            max={refundable}
+                            step="any"
+                            value={refundAmount}
+                            onChange={(e) => setRefundAmount(e.target.value)}
+                            required
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="refund-notes">Notes (optional)</Label>
+                        <Input
+                            id="refund-notes"
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            placeholder="e.g. partial refund installment"
+                        />
+                    </div>
+                    <Button
+                        type="submit"
+                        disabled={isLoading || refundable <= 0}>
+                        Record refund
                     </Button>
                 </form>
             </DialogContent>
@@ -175,11 +287,17 @@ export function ReturnOrderDialog({
 
     if (!order) return null
 
+    const refundable = orderRefundable(order)
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        const amount = Number(refundAmount)
+        const amount = refundAmount === '' ? 0 : Number(refundAmount)
         if (Number.isNaN(amount) || amount < 0) {
             toast.error('Enter a valid refund amount')
+            return
+        }
+        if (amount > refundable) {
+            toast.error(`Refund cannot exceed refundable amount (${refundable})`)
             return
         }
         try {
@@ -203,17 +321,18 @@ export function ReturnOrderDialog({
                     onSubmit={handleSubmit}
                     className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                        Stock will be restored. Enter the refund amount paid to the customer (can be partial or zero).
+                        Stock will be restored. You may refund now or record refunds later in installments (max refundable: {refundable}).
                     </p>
                     <div className="space-y-2">
-                        <Label htmlFor="refund-amount">Refund amount</Label>
+                        <Label htmlFor="refund-amount">Refund amount (optional)</Label>
                         <Input
                             id="refund-amount"
                             type="number"
                             min={0}
+                            max={refundable}
                             value={refundAmount}
                             onChange={(e) => setRefundAmount(e.target.value)}
-                            required
+                            placeholder="0"
                         />
                     </div>
                     <Button
@@ -247,8 +366,8 @@ export function CancelOrderDialog({
 
     if (!order) return null
 
-    const paid = order.payment ?? 0
-    const hasPayment = paid > 0
+    const refundable = orderRefundable(order)
+    const hasRefundable = refundable > 0
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -257,8 +376,8 @@ export function CancelOrderDialog({
             toast.error('Enter a valid refund amount')
             return
         }
-        if (amount > paid) {
-            toast.error('Refund cannot exceed amount paid on this order')
+        if (amount > refundable) {
+            toast.error(`Refund cannot exceed refundable amount (${refundable})`)
             return
         }
         try {
@@ -285,20 +404,20 @@ export function CancelOrderDialog({
                         The order will be marked cancelled and will not deduct stock on its delivery date.
                         {order.stockDeducted ? ' Any stock already reserved will be restored.' : ''}
                     </p>
-                    {hasPayment ? (
+                    {hasRefundable ? (
                         <div className="space-y-2">
-                            <Label htmlFor="cancel-refund-amount">Refund amount (max {paid})</Label>
+                            <Label htmlFor="cancel-refund-amount">Refund amount (max {refundable})</Label>
                             <Input
                                 id="cancel-refund-amount"
                                 type="number"
                                 min={0}
-                                max={paid}
+                                max={refundable}
                                 value={refundAmount}
                                 onChange={(e) => setRefundAmount(e.target.value)}
                                 placeholder="0"
                             />
                             <p className="text-xs text-muted-foreground">
-                                Enter how much was refunded to the customer. Leave empty or 0 if no cash refund.
+                                Enter how much to refund now. Leave empty or 0 if no cash refund yet — you can refund in installments later.
                             </p>
                         </div>
                     ) : null}

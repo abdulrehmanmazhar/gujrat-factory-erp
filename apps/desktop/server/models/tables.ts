@@ -14,7 +14,7 @@ const updatedAt = () =>
 export const users = sqliteTable('users', {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
-    email: text('email').notNull().unique(),
+    contact: text('contact').notNull().unique(),
     password: text('password'),
     role: text('role').notNull().default('User'),
     isVerified: integer('is_verified', { mode: 'boolean' }).notNull().default(false),
@@ -24,25 +24,12 @@ export const users = sqliteTable('users', {
     updatedAt: updatedAt()
 })
 
-export const userRoutes = sqliteTable(
-    'user_routes',
-    {
-        id: text('id').primaryKey(),
-        userId: text('user_id').notNull(),
-        route: text('route').notNull(),
-        createdAt: createdAt()
-    },
-    (table) => [uniqueIndex('user_routes_user_route_idx').on(table.userId, table.route)]
-)
-
 export const customers = sqliteTable('customers', {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
-    businessName: text('business_name'),
     address: text('address').notNull(),
     contact: text('contact').notNull().unique(),
     udhar: real('udhar').notNull().default(0),
-    route: text('route'),
     createdById: text('created_by_id').notNull(),
     createdAt: createdAt(),
     updatedAt: updatedAt()
@@ -65,7 +52,6 @@ export const productStockHistory = sqliteTable('product_stock_history', {
     id: text('id').primaryKey(),
     productId: text('product_id').notNull(),
     qty: integer('qty').notNull(),
-    totalBill: real('total_bill').notNull(),
     purchasePrice: real('purchase_price').notNull(),
     restockOrderItemId: text('restock_order_item_id'),
     recordedAt: integer('recorded_at', { mode: 'timestamp_ms' })
@@ -80,7 +66,6 @@ export const suppliers = sqliteTable('suppliers', {
     businessName: text('business_name'),
     address: text('address'),
     contact: text('contact').notNull(),
-    email: text('email'),
     notes: text('notes'),
     isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
     createdAt: createdAt(),
@@ -106,6 +91,8 @@ export const restockOrders = sqliteTable('restock_orders', {
     referenceNumber: text('reference_number'),
     status: text('status').notNull().default('draft'),
     totalAmount: real('total_amount').notNull().default(0),
+    amountPaid: real('amount_paid').notNull().default(0),
+    amountRefunded: real('amount_refunded').notNull().default(0),
     notes: text('notes'),
     createdById: text('created_by_id').notNull(),
     orderedAt: integer('ordered_at', { mode: 'timestamp_ms' }),
@@ -120,6 +107,7 @@ export const restockOrderItems = sqliteTable('restock_order_items', {
     productId: text('product_id').notNull(),
     qtyOrdered: integer('qty_ordered').notNull(),
     qtyReceived: integer('qty_received').notNull().default(0),
+    qtyReturned: integer('qty_returned').notNull().default(0),
     unitCost: real('unit_cost').notNull(),
     lineTotal: real('line_total').notNull(),
     createdAt: createdAt()
@@ -131,6 +119,7 @@ export const orders = sqliteTable('orders', {
     orderNumber: integer('order_number'),
     price: real('price').default(0),
     payment: real('payment'),
+    refunded: real('refunded').notNull().default(0),
     discount: real('discount').default(0),
     status: text('status'),
     orderMode: text('order_mode').notNull().default('delayed'),
@@ -138,6 +127,7 @@ export const orders = sqliteTable('orders', {
     deliveryStatus: integer('delivery_status', { mode: 'boolean' }).default(false),
     deliveryDate: integer('delivery_date', { mode: 'timestamp_ms' }),
     returnedAt: integer('returned_at', { mode: 'timestamp_ms' }),
+    lastPaymentReminderAt: integer('last_payment_reminder_at', { mode: 'timestamp_ms' }),
     message: text('message'),
     createdById: text('created_by_id').notNull(),
     createdAt: createdAt(),
@@ -154,41 +144,37 @@ export const orderItems = sqliteTable('order_items', {
     createdAt: createdAt()
 })
 
-export const customerOrders = sqliteTable(
-    'customer_orders',
-    {
-        id: text('id').primaryKey(),
-        customerId: text('customer_id').notNull(),
-        orderId: text('order_id').notNull(),
-        createdAt: createdAt()
-    },
-    (table) => [uniqueIndex('customer_orders_customer_order_idx').on(table.customerId, table.orderId)]
-)
-
-export const transactions = sqliteTable('transactions', {
+export const customerTransactions = sqliteTable('customer_transactions', {
     id: text('id').primaryKey(),
+    customerId: text('customer_id').notNull(),
+    orderId: text('order_id'),
     type: text('type').notNull(),
     amount: real('amount').notNull(),
     description: text('description').notNull(),
-    orderId: text('order_id'),
     proofImage: text('proof_image'),
     createdById: text('created_by_id'),
-    createdBySystem: integer('created_by_system', { mode: 'boolean' }).notNull().default(false),
     createdAt: createdAt()
 })
 
-export const targets = sqliteTable('targets', {
+export const supplierTransactions = sqliteTable('supplier_transactions', {
     id: text('id').primaryKey(),
-    userId: text('user_id').notNull(),
+    supplierId: text('supplier_id').notNull(),
+    restockOrderId: text('restock_order_id'),
     type: text('type').notNull(),
-    value: real('value').notNull(),
-    productId: text('product_id'),
-    startDate: integer('start_date', { mode: 'timestamp_ms' }).notNull(),
-    endDate: integer('end_date', { mode: 'timestamp_ms' }).notNull(),
-    achieved: integer('achieved', { mode: 'boolean' }).notNull().default(false),
-    progress: real('progress').notNull().default(0),
-    createdAt: createdAt(),
-    updatedAt: updatedAt()
+    amount: real('amount').notNull(),
+    description: text('description').notNull(),
+    createdById: text('created_by_id').notNull(),
+    createdAt: createdAt()
+})
+
+export const labourerTransactions = sqliteTable('labourer_transactions', {
+    id: text('id').primaryKey(),
+    labourerId: text('labourer_id').notNull(),
+    category: text('category').notNull(),
+    amount: real('amount').notNull(),
+    description: text('description').notNull(),
+    createdById: text('created_by_id').notNull(),
+    createdAt: createdAt()
 })
 
 export const productSales = sqliteTable('product_sales', {
@@ -262,6 +248,7 @@ export const labourProductionEntries = sqliteTable('labour_production_entries', 
     ratePerUnit: real('rate_per_unit').notNull(),
     totalPay: real('total_pay').notNull(),
     recipeApplied: integer('recipe_applied', { mode: 'boolean' }).notNull().default(false),
+    labourerTransactionId: text('labourer_transaction_id'),
     notes: text('notes'),
     createdById: text('created_by_id').notNull(),
     createdAt: createdAt()
@@ -280,8 +267,9 @@ export type Customer = typeof customers.$inferSelect
 export type Product = typeof products.$inferSelect
 export type Order = typeof orders.$inferSelect
 export type OrderItem = typeof orderItems.$inferSelect
-export type Transaction = typeof transactions.$inferSelect
-export type Target = typeof targets.$inferSelect
+export type CustomerTransaction = typeof customerTransactions.$inferSelect
+export type SupplierTransaction = typeof supplierTransactions.$inferSelect
+export type LabourerTransaction = typeof labourerTransactions.$inferSelect
 export type Supplier = typeof suppliers.$inferSelect
 export type RestockOrder = typeof restockOrders.$inferSelect
 export type RestockOrderItem = typeof restockOrderItems.$inferSelect

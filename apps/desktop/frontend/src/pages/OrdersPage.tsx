@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { CancelOrderDialog, OrderDetailDialog, PaymentDialog, ReturnOrderDialog } from '@/components/orders/OrderDetailDialog'
+import { CancelOrderDialog, OrderDetailDialog, PaymentDialog, RefundOrderDialog, ReturnOrderDialog } from '@/components/orders/OrderDetailDialog'
 import { DataTable } from '@/components/shared/DataTable'
 import { PageHeader, RowActions } from '@/components/shared/PageHeader'
 import { PaginationControls, paginate, totalPages } from '@/components/shared/PaginationControls'
@@ -12,6 +12,18 @@ import { useGenerateInvoicesMutation, useGetOrdersQuery } from '@/redux/api/orde
 import type { Order } from '@/types/api'
 import { FileDown } from 'lucide-react'
 import { toast } from 'sonner'
+
+function orderPayable(order: Order) {
+    return Math.max(0, (order.price ?? 0) - (order.discount ?? 0))
+}
+
+function orderOutstanding(order: Order) {
+    return Math.max(0, orderPayable(order) - (order.payment ?? 0))
+}
+
+function orderRefundable(order: Order) {
+    return Math.max(0, (order.payment ?? 0) - (order.refunded ?? 0))
+}
 
 function orderStatusLabel(order: Order) {
     if (order.status === 'cancelled') return 'Cancelled'
@@ -33,6 +45,7 @@ export default function OrdersPage() {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [detailOrder, setDetailOrder] = useState<Order | null>(null)
     const [paymentOrder, setPaymentOrder] = useState<Order | null>(null)
+    const [refundOrder, setRefundOrder] = useState<Order | null>(null)
     const [returnOrder, setReturnOrder] = useState<Order | null>(null)
     const [cancelOrder, setCancelOrder] = useState<Order | null>(null)
     const perPage = 10
@@ -89,7 +102,7 @@ export default function OrdersPage() {
         <div>
             <PageHeader
                 title="Orders"
-                description="View and manage customer orders"
+                description="View and manage customer orders, payments, and refunds"
                 actions={
                     <Button
                         onClick={handleGenerateInvoices}
@@ -130,6 +143,11 @@ export default function OrdersPage() {
                     { key: 'price', label: 'Total' },
                     { key: 'payment', label: 'Paid' },
                     {
+                        key: 'refunded',
+                        label: 'Refunded',
+                        render: (row) => String((row as unknown as Order).refunded ?? 0)
+                    },
+                    {
                         key: 'status',
                         label: 'Status',
                         render: (row) => {
@@ -153,10 +171,10 @@ export default function OrdersPage() {
                     const order = row as unknown as Order
                     const isCancelled = order.status === 'cancelled'
                     const isReturned = !!order.returnedAt || order.status === 'returned'
-                    const payable = Math.max(0, (order.price ?? 0) - (order.discount ?? 0))
-                    const outstanding = Math.max(0, payable - (order.payment ?? 0))
-                    const canPayFirst = !isCancelled && !isReturned && (order.payment === null || order.payment === undefined)
-                    const canPayUdhar = !isCancelled && !isReturned && order.payment !== null && order.payment !== undefined && outstanding > 0
+                    const outstanding = orderOutstanding(order)
+                    const refundable = orderRefundable(order)
+                    const canPay = !isCancelled && !isReturned && outstanding > 0
+                    const canRefund = !isCancelled && refundable > 0
                     const canReturn = !!order.deliveryStatus && !isReturned && !isCancelled
                     const canCancel = !order.deliveryStatus && !isReturned && !isCancelled
 
@@ -170,7 +188,7 @@ export default function OrdersPage() {
                                         onClick={() => setDetailOrder(order)}>
                                         View
                                     </Button>
-                                    {canPayFirst ? (
+                                    {canPay ? (
                                         <Button
                                             variant="ghost"
                                             size="sm"
@@ -178,12 +196,12 @@ export default function OrdersPage() {
                                             Pay
                                         </Button>
                                     ) : null}
-                                    {canPayUdhar ? (
+                                    {canRefund ? (
                                         <Button
                                             variant="ghost"
                                             size="sm"
-                                            onClick={() => setPaymentOrder(order)}>
-                                            Collect
+                                            onClick={() => setRefundOrder(order)}>
+                                            Refund
                                         </Button>
                                     ) : null}
                                     {canReturn ? (
@@ -212,15 +230,13 @@ export default function OrdersPage() {
                 open={!!paymentOrder}
                 onOpenChange={() => setPaymentOrder(null)}
                 order={paymentOrder}
-                mode={
-                    paymentOrder &&
-                    paymentOrder.payment !== null &&
-                    paymentOrder.payment !== undefined &&
-                    Math.max(0, (paymentOrder.price ?? 0) - (paymentOrder.discount ?? 0) - (paymentOrder.payment ?? 0)) > 0
-                        ? 'udhar'
-                        : 'payment'
-                }
                 onSuccess={() => setPaymentOrder(null)}
+            />
+            <RefundOrderDialog
+                open={!!refundOrder}
+                onOpenChange={() => setRefundOrder(null)}
+                order={refundOrder}
+                onSuccess={() => setRefundOrder(null)}
             />
             <ReturnOrderDialog
                 open={!!returnOrder}

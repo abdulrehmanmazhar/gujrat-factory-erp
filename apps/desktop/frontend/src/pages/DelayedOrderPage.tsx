@@ -163,7 +163,6 @@ export default function DelayedOrderPage() {
                                             key={c.id ?? c._id}
                                             value={c.id ?? c._id}>
                                             {c.name} — {c.contact}
-                                            {c.route ? ` (${c.route})` : ''}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>

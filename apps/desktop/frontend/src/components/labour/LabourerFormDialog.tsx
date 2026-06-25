@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { getApiErrorMessage } from '@/lib/errors'
 import { useCreateLabourerMutation, useUpdateLabourerMutation } from '@/redux/api/labourApi'
 import type { Labourer } from '@/types/api'
+import { isValidWhatsAppContact, WHATSAPP_NUMBER_HINT } from '@/lib/phone'
 import { toast } from 'sonner'
 
 export function LabourerFormDialog({
@@ -34,6 +35,10 @@ export function LabourerFormDialog({
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+        if (form.contact.trim() && !isValidWhatsAppContact(form.contact)) {
+            toast.error(`Enter a valid WhatsApp number (${WHATSAPP_NUMBER_HINT})`)
+            return
+        }
         try {
             if (labourer) {
                 await updateLabourer({ id: labourer.id ?? labourer._id, ...form }).unwrap()
@@ -69,11 +74,14 @@ export function LabourerFormDialog({
                         />
                     </div>
                     <div className="space-y-2">
-                        <Label>Contact</Label>
+                        <Label>WhatsApp number (optional)</Label>
                         <Input
+                            type="tel"
                             value={form.contact}
                             onChange={(e) => setForm({ ...form, contact: e.target.value })}
+                            placeholder="03XX XXXXXXX"
                         />
+                        <p className="text-xs text-muted-foreground">{WHATSAPP_NUMBER_HINT}</p>
                     </div>
                     <div className="space-y-2">
                         <Label>Notes</Label>

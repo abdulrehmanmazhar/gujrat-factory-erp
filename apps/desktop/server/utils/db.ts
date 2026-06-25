@@ -1,4 +1,6 @@
 import { migrate } from 'drizzle-orm/libsql/migrator'
+import type { LibSQLDatabase } from 'drizzle-orm/libsql'
+import type { Client } from '@libsql/client'
 import fs from 'node:fs'
 import path from 'node:path'
 import { createClient } from '@libsql/client'
@@ -20,9 +22,37 @@ if (filePath && filePath !== ':memory:') {
     }
 }
 
-const client = createClient({ url: dbUrl })
+let clientInstance: Client | null = null
+let dbInstance: LibSQLDatabase<typeof schema> | null = null
 
-export const db = drizzle(client, { schema })
+export function getClient(): Client {
+    if (!clientInstance) {
+        clientInstance = createClient({ url: dbUrl })
+    }
+    return clientInstance
+}
+
+function getDb() {
+    if (!dbInstance) {
+        dbInstance = drizzle(getClient(), { schema })
+    }
+    return dbInstance
+}
+
+/** Lazy proxy so importing this module does not open the SQLite file. */
+export const client = new Proxy({} as Client, {
+    get(_target, prop) {
+        const value = (getClient() as unknown as Record<string | symbol, unknown>)[prop]
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(getClient()) : value
+    }
+})
+
+export const db = new Proxy({} as LibSQLDatabase<typeof schema>, {
+    get(_target, prop) {
+        const value = (getDb() as unknown as Record<string | symbol, unknown>)[prop]
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(getDb()) : value
+    }
+})
 
 async function runMigrations() {
     const migrationsFolder = path.join(serverRoot, 'migrations')
@@ -32,13 +62,13 @@ async function runMigrations() {
     }
 
     logger.info('Running database migrations', { meta: { migrationsFolder } })
-    await migrate(db, { migrationsFolder })
+    await migrate(getDb(), { migrationsFolder })
     logger.info('Database migrations applied')
 }
 
 export async function connectDB() {
     try {
-        await client.execute('SELECT 1')
+        await getClient().execute('SELECT 1')
         await runMigrations()
         logger.info('Database connected', { meta: { url: dbUrl } })
     } catch (error) {

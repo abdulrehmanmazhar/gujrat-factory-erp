@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useCreateSupplierMutation, useUpdateSupplierMutation } from '@/redux/api/suppliersApi'
 import type { Supplier } from '@/types/api'
 import { getApiErrorMessage } from '@/lib/errors'
+import { isValidWhatsAppContact, WHATSAPP_NUMBER_HINT } from '@/lib/phone'
 import { toast } from 'sonner'
 
 export function SupplierFormDialog({
@@ -27,7 +28,6 @@ export function SupplierFormDialog({
         contact: '',
         businessName: '',
         address: '',
-        email: '',
         notes: ''
     })
 
@@ -38,16 +38,19 @@ export function SupplierFormDialog({
                 contact: supplier.contact,
                 businessName: supplier.businessName ?? '',
                 address: supplier.address ?? '',
-                email: supplier.email ?? '',
                 notes: supplier.notes ?? ''
             })
         } else {
-            setForm({ name: '', contact: '', businessName: '', address: '', email: '', notes: '' })
+            setForm({ name: '', contact: '', businessName: '', address: '', notes: '' })
         }
     }, [supplier, open])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+        if (!isValidWhatsAppContact(form.contact)) {
+            toast.error(`Enter a valid WhatsApp number (${WHATSAPP_NUMBER_HINT})`)
+            return
+        }
         try {
             if (supplier) {
                 await updateSupplier({ id: supplier.id ?? supplier._id, ...form }).unwrap()
@@ -81,21 +84,16 @@ export function SupplierFormDialog({
                             required
                         />
                     </div>
-                    <div className="space-y-2">
-                        <Label>Contact</Label>
+                    <div className="space-y-2 sm:col-span-2">
+                        <Label>WhatsApp number</Label>
                         <Input
+                            type="tel"
                             value={form.contact}
                             onChange={(e) => setForm({ ...form, contact: e.target.value })}
+                            placeholder="03XX XXXXXXX"
                             required
                         />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Email</Label>
-                        <Input
-                            type="email"
-                            value={form.email}
-                            onChange={(e) => setForm({ ...form, email: e.target.value })}
-                        />
+                        <p className="text-xs text-muted-foreground">{WHATSAPP_NUMBER_HINT}</p>
                     </div>
                     <div className="space-y-2 sm:col-span-2">
                         <Label>Business Name</Label>

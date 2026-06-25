@@ -1,18 +1,38 @@
 import { Request, Response } from 'express'
 import Jwt from 'jsonwebtoken'
-import cloudinary from 'cloudinary'
+import path from 'node:path'
+import fs from 'node:fs'
+import multer from 'multer'
 import { CatchAsyncError } from '../middleware/catchAsyncError.js'
 import { httpResponse } from '../utils/http.js'
 import { AppError } from '../utils/errors.js'
 import { appConfig } from '../config/env.js'
 import { param } from '../utils/params.js'
 import { accessTokenOptions, refreshTokenOptions, sendToken } from '../utils/jwt.js'
+import { moduleDir } from '../utils/esm.js'
 import * as userService from '../services/user.service.js'
+import { deleteRemoteFile, uploadBuffer, uploadFile } from '../utils/rclone.js'
+
+const __dirname = moduleDir(import.meta.url)
+const avatarUploadDir = path.join(__dirname, '..', 'uploads', 'avatars')
+if (!fs.existsSync(avatarUploadDir)) fs.mkdirSync(avatarUploadDir, { recursive: true })
+
+const avatarUpload = multer({
+    storage: multer.diskStorage({
+        destination: (_req, _file, cb) => cb(null, avatarUploadDir),
+        filename: (_req, file, cb) => cb(null, `avatar-${Date.now()}${path.extname(file.originalname) || '.jpg'}`)
+    }),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+        if (file.mimetype.startsWith('image/')) cb(null, true)
+        else cb(new Error('Only image files are allowed'))
+    }
+})
 
 export const registrationUser = CatchAsyncError(async (req: Request, res: Response) => {
-    const { name, email, password } = req.body
-    const result = await userService.registerUser(name, email, password)
-    httpResponse(req, res, 201, `Please check your email ${email} to activate your account`, result)
+    const { name, contact, password } = req.body
+    const result = await userService.registerUser(name, contact, password)
+    httpResponse(req, res, 201, 'Verification code sent to your WhatsApp number', result)
 })
 
 export const activateUser = CatchAsyncError(async (req: Request, res: Response) => {
@@ -22,9 +42,9 @@ export const activateUser = CatchAsyncError(async (req: Request, res: Response) 
 })
 
 export const LoginUser = CatchAsyncError(async (req: Request, res: Response) => {
-    const { email, password } = req.body
-    if (!email || !password) throw new AppError('Please enter email and password', 400)
-    const result = await userService.loginUser(email, password)
+    const { contact, password } = req.body
+    if (!contact || !password) throw new AppError('Please enter WhatsApp number and password', 400)
+    const result = await userService.loginUser(contact, password)
     sendToken(result.user, result.accessToken, result.refreshToken, 200, res)
 })
 
@@ -45,18 +65,12 @@ export const updateAccessToken = CatchAsyncError(async (req: Request, res: Respo
 })
 
 export const getUserInfo = CatchAsyncError(async (req: Request, res: Response) => {
-    const user = await userService.getUserWithRoutes(req.user!.id)
+    const user = await userService.getUserProfile(req.user!.id)
     httpResponse(req, res, 200, 'User fetched successfully', { user })
 })
 
-export const socialAuth = CatchAsyncError(async (req: Request, res: Response) => {
-    const { email, name, avatar } = req.body
-    const result = await userService.createSocialUser(email, name, avatar)
-    sendToken(result.user, result.accessToken, result.refreshToken, 200, res)
-})
-
 export const updateUserInfo = CatchAsyncError(async (req: Request, res: Response) => {
-    const user = await userService.updateUserInfo(req.user!.id, req.body.name, req.body.email)
+    const user = await userService.updateUserInfo(req.user!.id, req.body.name, req.body.contact)
     httpResponse(req, res, 200, 'User updated successfully', { user })
 })
 
@@ -65,20 +79,44 @@ export const updatePassword = CatchAsyncError(async (req: Request, res: Response
     httpResponse(req, res, 201, 'Password updated successfully', { user })
 })
 
-export const updateProfilePicture = CatchAsyncError(async (req: Request, res: Response) => {
-    const { avatar } = req.body
-    let publicId: string | undefined
-    let url: string | undefined
+export const updateProfilePicture = [
+    avatarUpload.single('avatar'),
+    CatchAsyncError(async (req: Request, res: Response) => {
+        const userId = req.user!.id
+        const existing = await userService.findUserById(userId)
+        if (!existing) throw new AppError('User not found', 404)
 
-    if (avatar) {
-        const myCloud = await cloudinary.v2.uploader.upload(avatar, { folder: 'avatars', width: 150 })
-        publicId = myCloud.public_id
-        url = myCloud.secure_url
-    }
+        let publicId: string | undefined
+        let url: string | undefined
 
-    const user = await userService.updateUserAvatar(req.user!.id, publicId!, url!)
-    httpResponse(req, res, 200, 'Avatar updated successfully', { user })
-})
+        if (req.file) {
+            const ext = path.extname(req.file.originalname) || path.extname(req.file.filename) || '.jpg'
+            const relativePath = `avatars/${userId}${ext}`
+            const uploaded = await uploadFile(req.file.path, relativePath, req)
+            publicId = uploaded.remotePath
+            url = uploaded.url ?? uploaded.remotePath
+            fs.unlinkSync(req.file.path)
+        } else if (req.body.avatar) {
+            const dataUrl = String(req.body.avatar)
+            const match = dataUrl.match(/^data:image\/[\w+.-]+;base64,(.+)$/)
+            const base64 = match ? match[1] : dataUrl
+            const buffer = Buffer.from(base64, 'base64')
+            const relativePath = `avatars/${userId}.jpg`
+            const uploaded = await uploadBuffer(buffer, relativePath, req)
+            publicId = uploaded.remotePath
+            url = uploaded.url ?? uploaded.remotePath
+        } else {
+            throw new AppError('Avatar image is required', 400)
+        }
+
+        if (existing.avatarPublicId && existing.avatarPublicId !== publicId) {
+            await deleteRemoteFile(existing.avatarPublicId)
+        }
+
+        const user = await userService.updateUserAvatar(userId, publicId!, url!)
+        httpResponse(req, res, 200, 'Avatar updated successfully', { user })
+    })
+]
 
 export const fetchAllUsers = CatchAsyncError(async (req: Request, res: Response) => {
     const users = await userService.listUsers()
@@ -105,10 +143,10 @@ export const verifyUser = CatchAsyncError(async (req: Request, res: Response) =>
 })
 
 export const forgotPassword = CatchAsyncError(async (req: Request, res: Response) => {
-    const { email } = req.body
-    if (!email) throw new AppError('Email is required', 400)
-    const result = await userService.requestPasswordReset(email)
-    httpResponse(req, res, 200, 'If an account exists for this email, a reset code has been sent', result)
+    const { contact } = req.body
+    if (!contact) throw new AppError('WhatsApp number is required', 400)
+    const result = await userService.requestPasswordReset(contact)
+    httpResponse(req, res, 200, 'If an account exists for this number, a reset code has been sent on WhatsApp', result)
 })
 
 export const resetPassword = CatchAsyncError(async (req: Request, res: Response) => {
@@ -116,14 +154,4 @@ export const resetPassword = CatchAsyncError(async (req: Request, res: Response)
     if (!reset_token || !reset_code || !new_password) throw new AppError('Missing required fields', 400)
     const user = await userService.resetPassword(reset_token, reset_code, new_password)
     httpResponse(req, res, 200, 'Password reset successfully', { user })
-})
-
-export const routeAssign = CatchAsyncError(async (req: Request, res: Response) => {
-    await userService.assignRoute(param(req.params.id), req.body.route)
-    httpResponse(req, res, 201, 'Assigned route to user successfully', null)
-})
-
-export const routeAssignDeletion = CatchAsyncError(async (req: Request, res: Response) => {
-    const remainingRoutes = await userService.deleteAssignedRoute(param(req.params.id), parseInt(param(req.params.index), 10))
-    httpResponse(req, res, 200, 'Deleted assigned route from user successfully', { remainingRoutes })
 })

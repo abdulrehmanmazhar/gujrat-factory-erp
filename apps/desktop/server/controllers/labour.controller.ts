@@ -58,3 +58,23 @@ export const getProductionEntry = CatchAsyncError(async (req: Request, res: Resp
     const entry = await labourService.getProductionEntry(param(req.params.id))
     httpResponse(req, res, 200, 'Production entry fetched successfully', { entry })
 })
+
+export const getLabourTransactions = CatchAsyncError(async (req: Request, res: Response) => {
+    const labourerId = typeof req.query.labourerId === 'string' ? req.query.labourerId : undefined
+    const transactions = await labourService.listLabourTransactions(labourerId)
+    httpResponse(req, res, 200, 'Labour transactions fetched successfully', { transactions })
+})
+
+export const createLabourTransaction = CatchAsyncError(async (req: Request, res: Response) => {
+    const { labourerId, amount, category, description } = req.body
+    if (!labourerId || amount === undefined || !category || !description) {
+        throw new AppError('labourerId, amount, category, and description are required', 400)
+    }
+    const transaction = await labourService.createLabourTransaction(labourerId, Number(amount), category, description, req.user!.id)
+    httpResponse(req, res, 200, 'Labour transaction recorded successfully', { transaction })
+})
+
+export const deleteLabourTransaction = CatchAsyncError(async (req: Request, res: Response) => {
+    await labourService.deleteLabourTransaction(param(req.params.id))
+    httpResponse(req, res, 200, 'Labour transaction removed successfully', null)
+})

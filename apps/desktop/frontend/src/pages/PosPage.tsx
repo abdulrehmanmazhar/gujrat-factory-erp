@@ -151,7 +151,6 @@ export default function PosPage() {
                                             key={c.id ?? c._id}
                                             value={c.id ?? c._id}>
                                             {c.name} — {c.contact}
-                                            {c.route ? ` (${c.route})` : ''}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>

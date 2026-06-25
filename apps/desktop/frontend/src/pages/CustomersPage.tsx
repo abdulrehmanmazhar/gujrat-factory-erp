@@ -25,7 +25,7 @@ export default function CustomersPage() {
         const list = data?.customers ?? []
         if (!search.trim()) return list
         const q = search.toLowerCase()
-        return list.filter((c) => c.name.toLowerCase().includes(q) || c.contact.includes(q) || (c.route ?? '').toLowerCase().includes(q))
+        return list.filter((c) => c.name.toLowerCase().includes(q) || c.contact.includes(q))
     }, [data, search])
 
     const rows = paginate(filtered, page, perPage)
@@ -46,7 +46,7 @@ export default function CustomersPage() {
         <div>
             <PageHeader
                 title="Customers"
-                description="Manage customer records, routes, and udhar balances"
+                description="Manage customer records and udhar balances"
                 actions={
                     <Button
                         onClick={() => {
@@ -77,7 +77,6 @@ export default function CustomersPage() {
                 columns={[
                     { key: 'name', label: 'Name' },
                     { key: 'contact', label: 'Contact' },
-                    { key: 'route', label: 'Route' },
                     { key: 'udhar', label: 'Udhar' },
                     {
                         key: 'createdByUser',

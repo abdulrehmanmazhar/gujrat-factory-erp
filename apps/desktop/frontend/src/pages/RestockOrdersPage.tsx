@@ -1,8 +1,19 @@
 import { useMemo, useState } from 'react'
 import { CreateRestockOrderDialog } from '@/components/suppliers/CreateRestockOrderDialog'
-import { RestockOrderDetailDialog } from '@/components/suppliers/RestockOrderDetailDialog'
+import {
+    CancelRestockOrderDialog,
+    hasReturnableItems,
+    MarkRestockOrderedButton,
+    RestockOrderDetailDialog,
+    RestockPaymentDialog,
+    RestockReceiveDialog,
+    RestockRefundDialog,
+    restockOutstanding,
+    statusVariant
+} from '@/components/suppliers/RestockOrderDialogs'
 import { DataTable } from '@/components/shared/DataTable'
-import { PageHeader } from '@/components/shared/PageHeader'
+import { PageHeader, RowActions } from '@/components/shared/PageHeader'
+import { PaginationControls, paginate, totalPages } from '@/components/shared/PaginationControls'
 import { SearchInput } from '@/components/shared/SearchInput'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -22,21 +33,20 @@ const STATUS_OPTIONS = [
     { value: 'cancelled', label: 'Cancelled' }
 ]
 
-function statusVariant(status: RestockOrder['status']) {
-    if (status === 'received') return 'default'
-    if (status === 'cancelled') return 'destructive'
-    if (status === 'ordered') return 'secondary'
-    return 'outline'
-}
-
 export default function RestockOrdersPage() {
     const user = useSelector(selectCurrentUser)
     const isAdmin = isAdminOrAbove(user?.role)
     const [statusFilter, setStatusFilter] = useState('all')
     const { data, isLoading } = useGetRestockOrdersQuery(statusFilter === 'all' ? undefined : statusFilter)
     const [search, setSearch] = useState('')
+    const [page, setPage] = useState(1)
     const [createOpen, setCreateOpen] = useState(false)
     const [detailOrder, setDetailOrder] = useState<RestockOrder | null>(null)
+    const [paymentOrder, setPaymentOrder] = useState<RestockOrder | null>(null)
+    const [refundOrder, setRefundOrder] = useState<RestockOrder | null>(null)
+    const [receiveOrder, setReceiveOrder] = useState<RestockOrder | null>(null)
+    const [cancelOrder, setCancelOrder] = useState<RestockOrder | null>(null)
+    const perPage = 10
 
     const filtered = useMemo(() => {
         const list = data?.orders ?? []
@@ -50,11 +60,13 @@ export default function RestockOrdersPage() {
         )
     }, [data, search])
 
+    const rows = paginate(filtered, page, perPage)
+
     return (
         <div>
             <PageHeader
                 title="Restock orders"
-                description="Purchase orders from suppliers — draft, place, receive into inventory"
+                description="Manage supplier purchase orders, payments, and returns"
                 actions={
                     isAdmin ? (
                         <Button onClick={() => setCreateOpen(true)}>
@@ -64,29 +76,37 @@ export default function RestockOrdersPage() {
                 }
             />
 
-            <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center">
-                <SearchInput
-                    value={search}
-                    onChange={setSearch}
-                    placeholder="Search by reference or supplier..."
-                    className="max-w-sm"
+            <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <SearchInput
+                        value={search}
+                        onChange={setSearch}
+                        placeholder="Search by reference or supplier..."
+                        className="max-w-sm"
+                    />
+                    <Select
+                        value={statusFilter}
+                        onValueChange={setStatusFilter}>
+                        <SelectTrigger className="w-44">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {STATUS_OPTIONS.map((opt) => (
+                                <SelectItem
+                                    key={opt.value}
+                                    value={opt.value}>
+                                    {opt.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <PaginationControls
+                    page={page}
+                    totalPages={totalPages(filtered.length, perPage)}
+                    onPrev={() => setPage((p) => Math.max(1, p - 1))}
+                    onNext={() => setPage((p) => p + 1)}
                 />
-                <Select
-                    value={statusFilter}
-                    onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-44">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {STATUS_OPTIONS.map((opt) => (
-                            <SelectItem
-                                key={opt.value}
-                                value={opt.value}>
-                                {opt.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
             </div>
 
             <DataTable
@@ -103,19 +123,24 @@ export default function RestockOrdersPage() {
                         render: (row) => (row.supplier as { name?: string })?.name ?? '—'
                     },
                     {
-                        key: 'status',
-                        label: 'Status',
-                        render: (row) => <Badge variant={statusVariant(row.status as RestockOrder['status'])}>{String(row.status)}</Badge>
-                    },
-                    {
                         key: 'totalAmount',
                         label: 'Total',
-                        render: (row) => Number(row.totalAmount ?? 0).toFixed(0)
+                        render: (row) => Number((row as unknown as RestockOrder).totalAmount ?? 0).toFixed(0)
                     },
                     {
-                        key: 'items',
-                        label: 'Items',
-                        render: (row) => String((row.items as unknown[])?.length ?? 0)
+                        key: 'amountPaid',
+                        label: 'Paid',
+                        render: (row) => String((row as unknown as RestockOrder).amountPaid ?? 0)
+                    },
+                    {
+                        key: 'amountRefunded',
+                        label: 'Refunded',
+                        render: (row) => String((row as unknown as RestockOrder).amountRefunded ?? 0)
+                    },
+                    {
+                        key: 'status',
+                        label: 'Status',
+                        render: (row) => <Badge variant={statusVariant((row as unknown as RestockOrder).status)}>{String(row.status)}</Badge>
                     },
                     {
                         key: 'createdAt',
@@ -123,15 +148,62 @@ export default function RestockOrdersPage() {
                         render: (row) => (row.createdAt ? new Date(String(row.createdAt)).toLocaleDateString() : '—')
                     }
                 ]}
-                rows={filtered as unknown as Record<string, unknown>[]}
-                renderActions={(row) => (
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setDetailOrder(row as unknown as RestockOrder)}>
-                        View
-                    </Button>
-                )}
+                rows={rows as unknown as Record<string, unknown>[]}
+                renderActions={(row) => {
+                    const order = row as unknown as RestockOrder
+                    const isDraft = order.status === 'draft'
+                    const isOrdered = order.status === 'ordered'
+                    const isReceived = order.status === 'received'
+                    const isCancelled = order.status === 'cancelled'
+                    const outstanding = restockOutstanding(order)
+                    const canReceive = (isDraft || isOrdered) && isAdmin
+                    const canPay = isReceived && !isCancelled && outstanding > 0 && isAdmin
+                    const canRefund = isReceived && !isCancelled && hasReturnableItems(order) && isAdmin
+                    const canCancel = isDraft && isAdmin
+                    const canPlace = isDraft && isAdmin
+
+                    return (
+                        <RowActions
+                            extra={
+                                <>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setDetailOrder(order)}>
+                                        View
+                                    </Button>
+                                    {canPlace ? <MarkRestockOrderedButton order={order} /> : null}
+                                    {canReceive ? (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setReceiveOrder(order)}>
+                                            Receive
+                                        </Button>
+                                    ) : null}
+                                    {canPay ? (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setPaymentOrder(order)}>
+                                            Pay
+                                        </Button>
+                                    ) : null}
+                                    {canRefund ? (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setRefundOrder(order)}>
+                                            Refund
+                                        </Button>
+                                    ) : null}
+                                </>
+                            }
+                            deleteLabel="Cancel"
+                            onDelete={canCancel ? () => setCancelOrder(order) : undefined}
+                        />
+                    )
+                }}
             />
 
             <CreateRestockOrderDialog
@@ -144,8 +216,30 @@ export default function RestockOrdersPage() {
                 open={!!detailOrder}
                 onOpenChange={() => setDetailOrder(null)}
                 order={detailOrder}
-                canManage={isAdmin}
-                onSuccess={() => setDetailOrder(null)}
+            />
+            <RestockPaymentDialog
+                open={!!paymentOrder}
+                onOpenChange={() => setPaymentOrder(null)}
+                order={paymentOrder}
+                onSuccess={() => setPaymentOrder(null)}
+            />
+            <RestockRefundDialog
+                open={!!refundOrder}
+                onOpenChange={() => setRefundOrder(null)}
+                order={refundOrder}
+                onSuccess={() => setRefundOrder(null)}
+            />
+            <RestockReceiveDialog
+                open={!!receiveOrder}
+                onOpenChange={() => setReceiveOrder(null)}
+                order={receiveOrder}
+                onSuccess={() => setReceiveOrder(null)}
+            />
+            <CancelRestockOrderDialog
+                open={!!cancelOrder}
+                onOpenChange={() => setCancelOrder(null)}
+                order={cancelOrder}
+                onSuccess={() => setCancelOrder(null)}
             />
         </div>
     )

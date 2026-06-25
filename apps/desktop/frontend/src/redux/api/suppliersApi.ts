@@ -19,14 +19,14 @@ export const suppliersApi = apiSlice.injectEndpoints({
         }),
         createSupplier: builder.mutation<
             ApiEnvelope<{ supplier: Supplier }>,
-            { name: string; contact: string; businessName?: string; address?: string; email?: string; notes?: string }
+            { name: string; contact: string; businessName?: string; address?: string; notes?: string }
         >({
             query: (body) => ({ url: '/suppliers', method: 'POST', body }),
             invalidatesTags: ['Suppliers']
         }),
         updateSupplier: builder.mutation<
             ApiEnvelope<{ supplier: Supplier }>,
-            { id: string; name?: string; contact?: string; businessName?: string; address?: string; email?: string; notes?: string }
+            { id: string; name?: string; contact?: string; businessName?: string; address?: string; notes?: string }
         >({
             query: ({ id, ...body }) => ({ url: `/suppliers/${id}`, method: 'PUT', body }),
             invalidatesTags: ['Suppliers']

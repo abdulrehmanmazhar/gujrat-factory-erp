@@ -4,13 +4,13 @@ import { moduleDir } from '../utils/esm.js'
 
 const __dirname = moduleDir(import.meta.url)
 import multer from 'multer'
-import cloudinary from 'cloudinary'
 import { Request, Response } from 'express'
 import { CatchAsyncError } from '../middleware/catchAsyncError.js'
 import { httpResponse } from '../utils/http.js'
 import { AppError } from '../utils/errors.js'
 import { param } from '../utils/params.js'
 import * as transactionService from '../services/transaction.service.js'
+import { uploadFile } from '../utils/rclone.js'
 
 const uploadDir = path.join(__dirname, '..', 'proofs')
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
@@ -34,8 +34,10 @@ export const createTransaction = [
 
         let proofImage: string | undefined
         if (req.file) {
-            const myCloud = await cloudinary.v2.uploader.upload(req.file.path, { folder: 'proofs' })
-            proofImage = myCloud.secure_url
+            const relativePath = `proofs/${path.basename(req.file.filename)}`
+            const uploaded = await uploadFile(req.file.path, relativePath, req)
+            proofImage = uploaded.url ?? uploaded.remotePath
+            fs.unlinkSync(req.file.path)
         }
 
         const transaction = await transactionService.createTransaction({
@@ -70,4 +72,16 @@ export const getSales = CatchAsyncError(async (req: Request, res: Response) => {
     const { type, dateRange, startDate, endDate } = req.body
     const sales = await transactionService.getSalesByDateRange(dateRange, startDate, endDate)
     httpResponse(req, res, 200, 'Sales fetched successfully', { sales, type })
+})
+
+export const getRecentTransactions = CatchAsyncError(async (req: Request, res: Response) => {
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '10'), 10) || 10, 1), 50)
+    const [customerTransactions, supplierTransactions] = await Promise.all([
+        transactionService.listRecentCustomerTransactions(limit),
+        transactionService.listRecentSupplierTransactions(limit)
+    ])
+    httpResponse(req, res, 200, 'Recent transactions fetched successfully', {
+        customerTransactions,
+        supplierTransactions
+    })
 })

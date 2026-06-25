@@ -1,44 +1,21 @@
 import 'dotenv/config'
-import http from 'node:http'
-import { Server } from 'socket.io'
-import { app } from './app.js'
-import { appConfig } from './config/env.js'
+import { applyPendingRestoreIfNeeded } from './services/backup.service.js'
+import { initializeRclone } from './utils/rcloneSetup.js'
 import { logger } from './config/logger.js'
-import { connectDB } from './utils/db.js'
-import { runScheduler } from './services/order.service.js'
-import { connectWhatsapp, getLatestQr, isWhatsappConnected } from './utils/whatsapp.js'
-import { setIo } from './utils/socket.js'
-import { broadcastWhatsAppQueueStats, getWhatsAppQueueStats } from './utils/whatsappQueue.js'
 
-const server = http.createServer(app)
-
-const io = new Server(server, {
-    cors: { origin: '*' }
-})
-
-setIo(io)
-
-io.on('connection', async (socket) => {
-    logger.info('Frontend connected to WebSocket')
-    if (getLatestQr()) socket.emit('qr', getLatestQr())
-    socket.emit('whatsapp:status', { connected: isWhatsappConnected() })
-    try {
-        const stats = await getWhatsAppQueueStats()
-        socket.emit('whatsapp:queue:update', stats)
-    } catch (error) {
-        logger.error('Failed to send initial WhatsApp queue stats', { meta: { error } })
+async function main() {
+    const restored = await applyPendingRestoreIfNeeded()
+    if (restored) {
+        logger.info('Database and file storage were restored from a pending backup')
     }
-})
 
-connectWhatsapp(io)
+    initializeRclone()
 
-async function bootstrap() {
-    await connectDB()
-    runScheduler()
-
-    server.listen(appConfig.PORT, () => {
-        logger.info(`Server running on port ${appConfig.PORT}`)
-    })
+    const { startServer } = await import('./startServer.js')
+    await startServer()
 }
 
-bootstrap()
+main().catch((error) => {
+    console.error(error)
+    process.exit(1)
+})

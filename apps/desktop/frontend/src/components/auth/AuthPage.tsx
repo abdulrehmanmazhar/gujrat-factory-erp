@@ -12,7 +12,8 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import constants from '@/constants/app'
 import { getApiErrorMessage } from '@/lib/errors'
-import { ArrowLeft, Mail } from 'lucide-react'
+import { isValidWhatsAppContact, WHATSAPP_NUMBER_HINT } from '@/lib/phone'
+import { ArrowLeft, MessageCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -20,7 +21,7 @@ type AuthTab = 'login' | 'signup'
 
 export function AuthPage() {
     const [tab, setTab] = useState<AuthTab>('login')
-    const [loginEmail, setLoginEmail] = useState('')
+    const [loginContact, setLoginContact] = useState('')
 
     return (
         <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
@@ -40,14 +41,14 @@ export function AuthPage() {
                         <TabsContent
                             value="login"
                             className="mt-4">
-                            <LoginPanel defaultEmail={loginEmail} />
+                            <LoginPanel defaultContact={loginContact} />
                         </TabsContent>
                         <TabsContent
                             value="signup"
                             className="mt-4">
                             <SignUpPanel
-                                onActivated={(email) => {
-                                    setLoginEmail(email)
+                                onActivated={(contact) => {
+                                    setLoginContact(contact)
                                     setTab('login')
                                 }}
                             />
@@ -59,23 +60,23 @@ export function AuthPage() {
     )
 }
 
-function LoginPanel({ defaultEmail }: { defaultEmail: string }) {
+function LoginPanel({ defaultContact }: { defaultContact: string }) {
     const [step, setStep] = useState<'login' | 'forgot' | 'reset'>('login')
-    const [email, setEmail] = useState(defaultEmail)
+    const [contact, setContact] = useState(defaultContact)
     const [password, setPassword] = useState('')
     const [login, { isLoading }] = useLoginMutation()
 
     useEffect(() => {
-        if (defaultEmail) setEmail(defaultEmail)
-    }, [defaultEmail])
+        if (defaultContact) setContact(defaultContact)
+    }, [defaultContact])
 
     if (step === 'forgot') {
         return (
             <ForgotPasswordPanel
-                defaultEmail={email}
+                defaultContact={contact}
                 onBack={() => setStep('login')}
-                onCodeSent={(sentEmail, resetToken) => {
-                    setEmail(sentEmail)
+                onCodeSent={(sentContact, resetToken) => {
+                    setContact(sentContact)
                     sessionStorage.setItem('erp_reset_token', resetToken)
                     setStep('reset')
                 }}
@@ -86,7 +87,7 @@ function LoginPanel({ defaultEmail }: { defaultEmail: string }) {
     if (step === 'reset') {
         return (
             <ResetPasswordPanel
-                email={email}
+                contact={contact}
                 resetToken={sessionStorage.getItem('erp_reset_token') ?? ''}
                 onBack={() => setStep('forgot')}
                 onDone={() => {
@@ -100,11 +101,15 @@ function LoginPanel({ defaultEmail }: { defaultEmail: string }) {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+        if (!isValidWhatsAppContact(contact)) {
+            toast.error(`Enter a valid WhatsApp number (${WHATSAPP_NUMBER_HINT})`)
+            return
+        }
         try {
-            await login({ email, password }).unwrap()
+            await login({ contact, password }).unwrap()
             toast.success('Signed in successfully')
         } catch (err) {
-            toast.error(getApiErrorMessage(err, 'Invalid email or password'))
+            toast.error(getApiErrorMessage(err, 'Invalid WhatsApp number or password'))
         }
     }
 
@@ -113,15 +118,16 @@ function LoginPanel({ defaultEmail }: { defaultEmail: string }) {
             onSubmit={handleSubmit}
             className="space-y-4">
             <div className="space-y-2">
-                <Label htmlFor="login-email">Email</Label>
+                <Label htmlFor="login-contact">WhatsApp number</Label>
                 <Input
-                    id="login-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@company.com"
+                    id="login-contact"
+                    type="tel"
+                    value={contact}
+                    onChange={(e) => setContact(e.target.value)}
+                    placeholder="03XX XXXXXXX"
                     required
                 />
+                <p className="text-xs text-muted-foreground">{WHATSAPP_NUMBER_HINT}</p>
             </div>
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -152,27 +158,31 @@ function LoginPanel({ defaultEmail }: { defaultEmail: string }) {
 }
 
 function ForgotPasswordPanel({
-    defaultEmail,
+    defaultContact,
     onBack,
     onCodeSent
 }: {
-    defaultEmail: string
+    defaultContact: string
     onBack: () => void
-    onCodeSent: (email: string, resetToken: string) => void
+    onCodeSent: (contact: string, resetToken: string) => void
 }) {
-    const [email, setEmail] = useState(defaultEmail)
+    const [contact, setContact] = useState(defaultContact)
     const [forgotPassword, { isLoading }] = useForgotPasswordMutation()
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+        if (!isValidWhatsAppContact(contact)) {
+            toast.error(`Enter a valid WhatsApp number (${WHATSAPP_NUMBER_HINT})`)
+            return
+        }
         try {
-            const result = await forgotPassword({ email }).unwrap()
+            const result = await forgotPassword({ contact }).unwrap()
             if (!result.resetToken) {
-                toast.message('If an account exists, a reset code was sent to your email')
+                toast.message('If an account exists, a reset code was sent on WhatsApp')
                 return
             }
-            toast.success('Reset code sent to your email')
-            onCodeSent(email, result.resetToken)
+            toast.success('Reset code sent on WhatsApp')
+            onCodeSent(contact, result.resetToken)
         } catch (err) {
             toast.error(getApiErrorMessage(err, 'Could not send reset code'))
         }
@@ -182,14 +192,14 @@ function ForgotPasswordPanel({
         <form
             onSubmit={handleSubmit}
             className="space-y-4">
-            <p className="text-sm text-muted-foreground">Enter your account email and we will send a 4-digit reset code.</p>
+            <p className="text-sm text-muted-foreground">Enter your WhatsApp number and we will send a 4-digit reset code.</p>
             <div className="space-y-2">
-                <Label htmlFor="forgot-email">Email</Label>
+                <Label htmlFor="forgot-contact">WhatsApp number</Label>
                 <Input
-                    id="forgot-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    id="forgot-contact"
+                    type="tel"
+                    value={contact}
+                    onChange={(e) => setContact(e.target.value)}
                     required
                 />
             </div>
@@ -210,7 +220,17 @@ function ForgotPasswordPanel({
     )
 }
 
-function ResetPasswordPanel({ email, resetToken, onBack, onDone }: { email: string; resetToken: string; onBack: () => void; onDone: () => void }) {
+function ResetPasswordPanel({
+    contact,
+    resetToken,
+    onBack,
+    onDone
+}: {
+    contact: string
+    resetToken: string
+    onBack: () => void
+    onDone: () => void
+}) {
     const [resetCode, setResetCode] = useState('')
     const [newPassword, setNewPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
@@ -242,9 +262,9 @@ function ResetPasswordPanel({ email, resetToken, onBack, onDone }: { email: stri
     return (
         <div className="space-y-4">
             <div className="flex items-center gap-2 rounded-lg border bg-muted/50 p-3 text-sm">
-                <Mail className="size-4 shrink-0 text-muted-foreground" />
+                <MessageCircle className="size-4 shrink-0 text-muted-foreground" />
                 <p>
-                    Enter the code sent to <span className="font-medium">{email}</span> and choose a new password.
+                    Enter the code sent to <span className="font-medium">{contact}</span> on WhatsApp and choose a new password.
                 </p>
             </div>
             <form
@@ -303,13 +323,13 @@ function ResetPasswordPanel({ email, resetToken, onBack, onDone }: { email: stri
     )
 }
 
-function SignUpPanel({ onActivated }: { onActivated: (email: string) => void }) {
+function SignUpPanel({ onActivated }: { onActivated: (contact: string) => void }) {
     const [step, setStep] = useState<'register' | 'verify'>('register')
     const [register, { isLoading: registering }] = useRegisterMutation()
     const [activateUser, { isLoading: activating }] = useActivateUserMutation()
 
     const [name, setName] = useState('')
-    const [email, setEmail] = useState('')
+    const [contact, setContact] = useState('')
     const [password, setPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
     const [activationToken, setActivationToken] = useState('')
@@ -317,6 +337,10 @@ function SignUpPanel({ onActivated }: { onActivated: (email: string) => void }) 
 
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault()
+        if (!isValidWhatsAppContact(contact)) {
+            toast.error(`Enter a valid WhatsApp number (${WHATSAPP_NUMBER_HINT})`)
+            return
+        }
         if (password !== confirmPassword) {
             toast.error('Passwords do not match')
             return
@@ -326,10 +350,10 @@ function SignUpPanel({ onActivated }: { onActivated: (email: string) => void }) 
             return
         }
         try {
-            const result = await register({ name, email, password }).unwrap()
+            const result = await register({ name, contact, password }).unwrap()
             setActivationToken(result.activationToken)
             setStep('verify')
-            toast.success('Verification code sent to your email')
+            toast.success('Verification code sent on WhatsApp')
         } catch (err) {
             toast.error(getApiErrorMessage(err, 'Registration failed'))
         }
@@ -347,7 +371,7 @@ function SignUpPanel({ onActivated }: { onActivated: (email: string) => void }) 
                 activation_code: activationCode
             }).unwrap()
             toast.success('Account activated. If you are the first user, you can sign in as super admin.')
-            onActivated(email)
+            onActivated(contact)
             setStep('register')
             setName('')
             setPassword('')
@@ -363,9 +387,9 @@ function SignUpPanel({ onActivated }: { onActivated: (email: string) => void }) 
         return (
             <div className="space-y-4">
                 <div className="flex items-center gap-2 rounded-lg border bg-muted/50 p-3 text-sm">
-                    <Mail className="size-4 shrink-0 text-muted-foreground" />
+                    <MessageCircle className="size-4 shrink-0 text-muted-foreground" />
                     <p>
-                        We sent a 4-digit code to <span className="font-medium">{email}</span>. Enter it below to activate your account.
+                        We sent a 4-digit code to <span className="font-medium">{contact}</span> on WhatsApp. Enter it below to activate your account.
                     </p>
                 </div>
                 <form
@@ -419,15 +443,16 @@ function SignUpPanel({ onActivated }: { onActivated: (email: string) => void }) 
                 />
             </div>
             <div className="space-y-2">
-                <Label htmlFor="signup-email">Email</Label>
+                <Label htmlFor="signup-contact">WhatsApp number</Label>
                 <Input
-                    id="signup-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@company.com"
+                    id="signup-contact"
+                    type="tel"
+                    value={contact}
+                    onChange={(e) => setContact(e.target.value)}
+                    placeholder="03XX XXXXXXX"
                     required
                 />
+                <p className="text-xs text-muted-foreground">{WHATSAPP_NUMBER_HINT}</p>
             </div>
             <div className="space-y-2">
                 <Label htmlFor="signup-password">Password</Label>

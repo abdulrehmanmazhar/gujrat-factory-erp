@@ -2,8 +2,11 @@ import express from 'express'
 import { authorizeRoles, isAuthenticated } from '../middleware/auth.js'
 import {
     createLabourer,
+    createLabourTransaction,
+    deleteLabourTransaction,
     getLabourer,
     getLabourers,
+    getLabourTransactions,
     getProductionEntries,
     getProductionEntry,
     recordProduction,
@@ -24,5 +27,9 @@ router.delete('/labourers/:id/rates/:productId', isAuthenticated, authorizeRoles
 router.get('/labour/production', isAuthenticated, getProductionEntries)
 router.get('/labour/production/:id', isAuthenticated, getProductionEntry)
 router.post('/labour/production', isAuthenticated, authorizeRoles('admin'), recordProduction)
+
+router.get('/labour/transactions', isAuthenticated, getLabourTransactions)
+router.post('/labour/transactions', isAuthenticated, authorizeRoles('admin'), createLabourTransaction)
+router.delete('/labour/transactions/:id', isAuthenticated, authorizeRoles('admin'), deleteLabourTransaction)
 
 export default router

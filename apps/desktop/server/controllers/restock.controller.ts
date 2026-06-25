@@ -2,7 +2,9 @@ import { Request, Response } from 'express'
 import { CatchAsyncError } from '../middleware/catchAsyncError.js'
 import { httpResponse } from '../utils/http.js'
 import { param } from '../utils/params.js'
+import { AppError } from '../utils/errors.js'
 import * as restockService from '../services/restock.service.js'
+import { listSupplierTransactions } from '../services/supplierTransaction.service.js'
 
 export const createRestockOrder = CatchAsyncError(async (req: Request, res: Response) => {
     const order = await restockService.createRestockOrder(req.body.supplierId, req.user!.id, req.body.items, req.body.notes, req.body.referenceNumber)
@@ -37,4 +39,33 @@ export const cancelRestockOrder = CatchAsyncError(async (req: Request, res: Resp
 export const addRestockOrderItem = CatchAsyncError(async (req: Request, res: Response) => {
     const order = await restockService.addRestockOrderItem(param(req.params.id), req.body)
     httpResponse(req, res, 200, 'Restock order item added successfully', { order })
+})
+
+export const getSupplierTransactions = CatchAsyncError(async (req: Request, res: Response) => {
+    const restockOrderId = typeof req.query.restockOrderId === 'string' ? req.query.restockOrderId : undefined
+    const transactions = await listSupplierTransactions(restockOrderId)
+    httpResponse(req, res, 200, 'Supplier transactions fetched successfully', { transactions })
+})
+
+export const recordRestockPayment = CatchAsyncError(async (req: Request, res: Response) => {
+    const amount = parseFloat(req.body.amount)
+    if (typeof amount !== 'number' || isNaN(amount) || amount <= 0) {
+        throw new AppError('amount must be a positive number', 400)
+    }
+    const order = await restockService.recordRestockPayment(param(req.params.id), amount, req.user!.id, req.body.notes)
+    httpResponse(req, res, 200, 'Restock payment recorded successfully', { order })
+})
+
+export const recordRestockRefund = CatchAsyncError(async (req: Request, res: Response) => {
+    const returnedItems = req.body.returnedItems as { itemId: string; qtyReturned: number }[] | undefined
+    if (!Array.isArray(returnedItems) || !returnedItems.length) {
+        throw new AppError('returnedItems array is required', 400)
+    }
+    const requestedCashRefund =
+        req.body.amount !== undefined && req.body.amount !== null && req.body.amount !== '' ? parseFloat(req.body.amount) : undefined
+    if (requestedCashRefund !== undefined && (typeof requestedCashRefund !== 'number' || Number.isNaN(requestedCashRefund))) {
+        throw new AppError('amount must be a valid number when provided', 400)
+    }
+    const order = await restockService.recordRestockRefund(param(req.params.id), req.user!.id, req.body.notes, returnedItems, requestedCashRefund)
+    httpResponse(req, res, 200, 'Restock refund recorded successfully', { order })
 })

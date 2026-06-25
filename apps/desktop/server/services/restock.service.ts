@@ -1,11 +1,83 @@
 // @ts-nocheck
 import { and, desc, eq } from 'drizzle-orm'
 import { db } from '../utils/db.js'
-import { products, productStockHistory, restockOrderItems, restockOrders, suppliers, transactions } from '../models/tables.js'
+import { products, productStockHistory, restockOrderItems, restockOrders, suppliers } from '../models/tables.js'
+import { createSupplierTransaction } from './supplierTransaction.service.js'
 import { AppError } from '../utils/errors.js'
 import { createId, withLegacyId } from '../utils/mappers.js'
 
 type RestockItemInput = { productId: string; qtyOrdered: number; unitCost: number }
+type ReturnedItemInput = { itemId: string; qtyReturned: number }
+
+async function applyRestockItemReturns(restockOrderId: string, returnedItems: ReturnedItemInput[]) {
+    const order = await getRestockWithItems(restockOrderId)
+    if (!order) throw new AppError('Restock order not found', 404)
+
+    const itemMap = new Map(order.items.map((item) => [item.id, item]))
+    let returnValue = 0
+
+    for (const ret of returnedItems) {
+        if (ret.qtyReturned <= 0) continue
+
+        const item = itemMap.get(ret.itemId)
+        if (!item) throw new AppError(`Restock item ${ret.itemId} not found`, 400)
+
+        const returnable = (item.qtyReceived ?? 0) - (item.qtyReturned ?? 0)
+        if (ret.qtyReturned > returnable) {
+            throw new AppError(`Cannot return more than ${returnable} units for this line item`, 400)
+        }
+
+        const [product] = await db.select().from(products).where(eq(products.id, item.productId)).limit(1)
+        if (!product) throw new AppError('Product not found', 404)
+        if (product.stockQty < ret.qtyReturned) {
+            throw new AppError(`Insufficient stock for ${product.name}. Available: ${product.stockQty}`, 400)
+        }
+
+        returnValue += ret.qtyReturned * item.unitCost
+        const newStockQty = product.stockQty - ret.qtyReturned
+
+        await db.insert(productStockHistory).values({
+            id: createId(),
+            productId: item.productId,
+            qty: -ret.qtyReturned,
+            purchasePrice: item.unitCost,
+            restockOrderItemId: item.id,
+            recordedAt: new Date()
+        })
+
+        await db
+            .update(products)
+            .set({
+                stockQty: newStockQty,
+                inStock: newStockQty > 0,
+                updatedAt: new Date()
+            })
+            .where(eq(products.id, item.productId))
+
+        await db
+            .update(restockOrderItems)
+            .set({ qtyReturned: (item.qtyReturned ?? 0) + ret.qtyReturned })
+            .where(eq(restockOrderItems.id, item.id))
+    }
+
+    if (returnValue <= 0) throw new AppError('At least one item with a positive return quantity is required', 400)
+    return returnValue
+}
+
+async function recalculateRestockOrderTotals(restockOrderId: string) {
+    const items = await db.select().from(restockOrderItems).where(eq(restockOrderItems.restockOrderId, restockOrderId))
+
+    let totalAmount = 0
+    for (const item of items) {
+        const netQty = Math.max(0, (item.qtyReceived ?? 0) - (item.qtyReturned ?? 0))
+        const lineTotal = netQty * item.unitCost
+        totalAmount += lineTotal
+        await db.update(restockOrderItems).set({ lineTotal }).where(eq(restockOrderItems.id, item.id))
+    }
+
+    await db.update(restockOrders).set({ totalAmount, updatedAt: new Date() }).where(eq(restockOrders.id, restockOrderId))
+    return totalAmount
+}
 
 async function getRestockWithItems(restockOrderId: string) {
     const [order] = await db.select().from(restockOrders).where(eq(restockOrders.id, restockOrderId)).limit(1)
@@ -118,7 +190,6 @@ export async function receiveRestockOrder(id: string, receivedById: string, rece
             id: createId(),
             productId: item.productId,
             qty: receivedQty,
-            totalBill: lineTotal,
             purchasePrice,
             restockOrderItemId: item.id,
             recordedAt: new Date()
@@ -145,15 +216,88 @@ export async function receiveRestockOrder(id: string, receivedById: string, rece
         })
         .where(eq(restockOrders.id, id))
 
-    await db.insert(transactions).values({
-        id: createId(),
-        type: 'investment',
-        amount: totalReceivedAmount,
-        description: `Restock received from supplier ${order.supplier?.name ?? order.supplierId}`,
-        createdById: receivedById
+    return getRestockWithItems(id)
+}
+
+export async function recordRestockPayment(restockOrderId: string, amount: number, userId: string, notes?: string) {
+    const [order] = await db.select().from(restockOrders).where(eq(restockOrders.id, restockOrderId)).limit(1)
+    if (!order) throw new AppError('Restock order not found', 404)
+    if (order.status !== 'received') throw new AppError('Payments can only be recorded on received restock orders', 400)
+    if (amount <= 0) throw new AppError('Payment amount must be positive', 400)
+
+    const outstanding = order.totalAmount - (order.amountPaid ?? 0)
+    if (amount > outstanding) throw new AppError(`Payment cannot exceed outstanding amount (${outstanding})`, 400)
+
+    const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, order.supplierId)).limit(1)
+    if (!supplier) throw new AppError('Supplier not found', 404)
+
+    await createSupplierTransaction({
+        supplierId: order.supplierId,
+        restockOrderId,
+        type: 'payment',
+        amount,
+        description: notes?.trim() || `Payment for restock order ${order.referenceNumber ?? restockOrderId.slice(0, 8)}`,
+        createdById: userId
     })
 
-    return getRestockWithItems(id)
+    await db
+        .update(restockOrders)
+        .set({ amountPaid: (order.amountPaid ?? 0) + amount, updatedAt: new Date() })
+        .where(eq(restockOrders.id, restockOrderId))
+
+    return getRestockWithItems(restockOrderId)
+}
+
+export async function recordRestockRefund(
+    restockOrderId: string,
+    userId: string,
+    notes?: string,
+    returnedItems?: ReturnedItemInput[],
+    requestedCashRefund?: number
+) {
+    const [order] = await db.select().from(restockOrders).where(eq(restockOrders.id, restockOrderId)).limit(1)
+    if (!order) throw new AppError('Restock order not found', 404)
+    if (order.status !== 'received') throw new AppError('Refunds can only be recorded on received restock orders', 400)
+    if (!returnedItems?.length) throw new AppError('returnedItems are required to return stock to the supplier', 400)
+
+    const paid = order.amountPaid ?? 0
+    const alreadyRefunded = order.amountRefunded ?? 0
+
+    const returnValue = await applyRestockItemReturns(restockOrderId, returnedItems)
+    const newTotalAmount = await recalculateRestockOrderTotals(restockOrderId)
+
+    // Cash back from supplier only when we have paid more than we still owe for kept stock.
+    const maxCashRefund = Math.min(returnValue, Math.max(0, paid - alreadyRefunded - newTotalAmount))
+    const cashRefund = typeof requestedCashRefund === 'number' && !Number.isNaN(requestedCashRefund) ? requestedCashRefund : maxCashRefund
+
+    if (cashRefund < 0) throw new AppError('Refund amount must be non-negative', 400)
+    if (cashRefund > maxCashRefund) {
+        throw new AppError(`Cash refund cannot exceed ${maxCashRefund} for this return`, 400)
+    }
+    if (cashRefund > paid - alreadyRefunded) {
+        throw new AppError(`Cash refund cannot exceed amount paid minus prior refunds (${paid - alreadyRefunded})`, 400)
+    }
+
+    if (cashRefund > 0) {
+        await createSupplierTransaction({
+            supplierId: order.supplierId,
+            restockOrderId,
+            type: 'refund',
+            amount: cashRefund,
+            description: notes?.trim() || `Refund from supplier for restock order ${order.referenceNumber ?? restockOrderId.slice(0, 8)}`,
+            createdById: userId
+        })
+    }
+
+    await db
+        .update(restockOrders)
+        .set({
+            amountRefunded: alreadyRefunded + cashRefund,
+            updatedAt: new Date()
+        })
+        .where(eq(restockOrders.id, restockOrderId))
+
+    return getRestockWithItems(restockOrderId)
 }
 
 export async function cancelRestockOrder(id: string) {

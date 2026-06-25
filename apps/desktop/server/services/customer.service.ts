@@ -1,19 +1,14 @@
 // @ts-nocheck
 import { desc, eq } from 'drizzle-orm'
 import { db } from '../utils/db.js'
-import { customers, transactions, users } from '../models/tables.js'
+import { customers, customerTransactions, users } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
 import { createId, withLegacyId } from '../utils/mappers.js'
+import { assertValidWhatsAppContact } from '../utils/phone.js'
 
-export async function addCustomer(data: {
-    name: string
-    address: string
-    contact: string
-    route?: string
-    businessName?: string
-    createdById: string
-}) {
-    const [existing] = await db.select().from(customers).where(eq(customers.contact, data.contact)).limit(1)
+export async function addCustomer(data: { name: string; address: string; contact: string; createdById: string }) {
+    const contact = assertValidWhatsAppContact(data.contact, 'Contact')
+    const [existing] = await db.select().from(customers).where(eq(customers.contact, contact)).limit(1)
     if (existing) throw new AppError('Account already exists for this contact', 400)
 
     const [customer] = await db
@@ -22,9 +17,7 @@ export async function addCustomer(data: {
             id: createId(),
             name: data.name,
             address: data.address,
-            contact: data.contact,
-            route: data.route,
-            businessName: data.businessName,
+            contact,
             createdById: data.createdById
         })
         .returning()
@@ -36,9 +29,18 @@ export async function editCustomer(id: string, data: Partial<typeof customers.$i
     const [existing] = await db.select().from(customers).where(eq(customers.id, id)).limit(1)
     if (!existing) throw new AppError('Customer with this id not found', 400)
 
+    const payload = { ...data }
+    if (payload.contact) {
+        payload.contact = assertValidWhatsAppContact(payload.contact, 'Contact')
+        if (payload.contact !== existing.contact) {
+            const [duplicate] = await db.select().from(customers).where(eq(customers.contact, payload.contact)).limit(1)
+            if (duplicate) throw new AppError('Account already exists for this contact', 400)
+        }
+    }
+
     const [customer] = await db
         .update(customers)
-        .set({ ...data, updatedAt: new Date() })
+        .set({ ...payload, updatedAt: new Date() })
         .where(eq(customers.id, id))
         .returning()
 
@@ -52,7 +54,7 @@ export async function listCustomers() {
             createdByUser: {
                 id: users.id,
                 name: users.name,
-                email: users.email
+                contact: users.contact
             }
         })
         .from(customers)
@@ -64,7 +66,7 @@ export async function listCustomers() {
     return rows.map(({ customer, createdByUser }) => ({
         ...withLegacyId(customer),
         createdBy: customer.createdById,
-        createdByUser: createdByUser ? withLegacyId(createdByUser) : { name: 'Unknown User', email: 'N/A' }
+        createdByUser: createdByUser ? withLegacyId(createdByUser) : { name: 'Unknown User', contact: 'N/A' }
     }))
 }
 
@@ -85,9 +87,10 @@ export async function returnCustomerUdhar(id: string, amount: number, createdByI
     if (!customer) throw new AppError('Customer not found', 404)
     if (amount > customer.udhar) throw new AppError('Cannot pay more than udhar amount', 400)
 
-    await db.insert(transactions).values({
+    await db.insert(customerTransactions).values({
         id: createId(),
-        type: 'sale',
+        customerId: id,
+        type: 'udhar_payment',
         amount,
         description: `${customer.name}-${customer.address} paid from his udhar ${customer.udhar}`,
         createdById

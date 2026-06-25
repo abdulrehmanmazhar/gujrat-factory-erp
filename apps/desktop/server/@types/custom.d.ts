@@ -7,10 +7,9 @@ declare global {
                 id: string
                 _id: string
                 name: string
-                email: string
+                contact: string
                 role: string
                 isVerified: boolean
-                routes: string[]
                 avatar?: { public_id?: string | null; url?: string | null }
             }
             file?: Express.Multer.File

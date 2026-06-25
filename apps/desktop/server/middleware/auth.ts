@@ -8,7 +8,6 @@ import { AppError } from '../utils/errors.js'
 import { httpError } from '../utils/http.js'
 import { appConfig } from '../config/env.js'
 import { mapUser } from '../utils/mappers.js'
-import { getUserRoutes } from '../services/user.service.js'
 import { roleCanAccess } from '../utils/roles.js'
 
 export const isAuthenticated = CatchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
@@ -22,8 +21,7 @@ export const isAuthenticated = CatchAsyncError(async (req: Request, res: Respons
         const [user] = await db.select().from(users).where(eq(users.id, decoded.id)).limit(1)
         if (!user) throw new AppError('User not found', 400)
 
-        const routes = await getUserRoutes(user.id)
-        req.user = { ...mapUser({ ...user, password: null }), routes, _id: user.id, id: user.id } as Express.Request['user']
+        req.user = { ...mapUser({ ...user, password: null }), _id: user.id, id: user.id } as Express.Request['user']
         next()
     } catch (error: any) {
         if (error instanceof AppError) throw error

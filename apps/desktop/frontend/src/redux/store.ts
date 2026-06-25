@@ -11,6 +11,8 @@ import '@/redux/api/suppliersApi'
 import '@/redux/api/restockApi'
 import '@/redux/api/recipesApi'
 import '@/redux/api/labourApi'
+import '@/redux/api/backupApi'
+import '@/redux/api/settingsApi'
 
 export const store = configureStore({
     reducer: {

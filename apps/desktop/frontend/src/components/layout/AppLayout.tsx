@@ -13,13 +13,13 @@ import {
     SidebarTrigger
 } from '@/components/ui/sidebar'
 import constants from '@/constants/app'
+import { useLanguage } from '@/hooks/useLanguage'
 import { isAdminOrAbove, isSuperAdmin } from '@/lib/roles'
 import { useLogoutMutation } from '@/redux/api/authApi'
 import { selectCurrentUser } from '@/redux/slices/authSlice'
 import {
     BarChart3,
     CalendarClock,
-    CreditCard,
     HelpCircle,
     LayoutDashboard,
     LogOut,
@@ -45,27 +45,27 @@ import { Button } from '@/components/ui/button'
 import { useTheme } from '@/hooks/useTheme'
 
 const navItems = [
-    { to: '/', label: 'Home', icon: BarChart3 },
-    { to: '/dashboard', label: 'Dashboard', icon: Target },
-    { to: '/pos', label: 'POS', icon: ShoppingBag },
-    { to: '/delayed-orders', label: 'Delayed orders', icon: CalendarClock },
-    { to: '/orders', label: 'Orders', icon: ShoppingCart },
-    { to: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
-    { to: '/payments', label: 'Payments', icon: CreditCard },
-    { to: '/inventory', label: 'Inventory', icon: Package },
-    { to: '/customers', label: 'Customers', icon: Users },
-    { to: '/suppliers', label: 'Suppliers', icon: Truck, adminOnly: true },
-    { to: '/restock-orders', label: 'Restock orders', icon: ClipboardList, adminOnly: true },
-    { to: '/recipes', label: 'Recipes', icon: ChefHat, adminOnly: true },
-    { to: '/labour', label: 'Labour', icon: HardHat, adminOnly: true },
-    { to: '/community', label: 'Community', icon: UsersRound, superAdminOnly: true },
-    { to: '/profile', label: 'Profile', icon: UserCircle },
-    { to: '/settings', label: 'Settings', icon: Settings },
-    { to: '/help', label: 'Help', icon: HelpCircle }
+    { to: '/', labelKey: 'home' as const, icon: BarChart3 },
+    { to: '/dashboard', labelKey: 'dashboard' as const, icon: Target },
+    { to: '/pos', labelKey: 'pos' as const, icon: ShoppingBag },
+    { to: '/delayed-orders', labelKey: 'delayedOrders' as const, icon: CalendarClock },
+    { to: '/orders', labelKey: 'orders' as const, icon: ShoppingCart },
+    { to: '/whatsapp', labelKey: 'whatsapp' as const, icon: MessageCircle },
+    { to: '/inventory', labelKey: 'inventory' as const, icon: Package },
+    { to: '/customers', labelKey: 'customers' as const, icon: Users },
+    { to: '/suppliers', labelKey: 'suppliers' as const, icon: Truck, adminOnly: true },
+    { to: '/restock-orders', labelKey: 'restockOrders' as const, icon: ClipboardList, adminOnly: true },
+    { to: '/recipes', labelKey: 'recipes' as const, icon: ChefHat, adminOnly: true },
+    { to: '/labour', labelKey: 'labour' as const, icon: HardHat, adminOnly: true },
+    { to: '/community', labelKey: 'community' as const, icon: UsersRound, superAdminOnly: true },
+    { to: '/profile', labelKey: 'profile' as const, icon: UserCircle },
+    { to: '/settings', labelKey: 'settings' as const, icon: Settings },
+    { to: '/help', labelKey: 'help' as const, icon: HelpCircle }
 ]
 
 export function AppLayout() {
     useGetMeQuery()
+    const { t } = useLanguage()
     const user = useSelector(selectCurrentUser)
     const [logout] = useLogoutMutation()
     const navigate = useNavigate()
@@ -75,9 +75,9 @@ export function AppLayout() {
         try {
             await logout().unwrap()
             navigate('/')
-            toast.success('Logged out')
+            toast.success(t.nav.loggedOut)
         } catch {
-            toast.error('Logout failed')
+            toast.error(t.nav.logoutFailed)
         }
     }
 
@@ -92,7 +92,7 @@ export function AppLayout() {
                 </SidebarHeader>
                 <SidebarContent>
                     <SidebarGroup>
-                        <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+                        <SidebarGroupLabel>{t.nav.navigation}</SidebarGroupLabel>
                         <SidebarGroupContent>
                             <SidebarMenu>
                                 {navItems
@@ -109,7 +109,7 @@ export function AppLayout() {
                                                     end={item.to === '/'}
                                                     className={({ isActive }) => (isActive ? 'bg-sidebar-accent' : '')}>
                                                     <item.icon className="size-4" />
-                                                    <span>{item.label}</span>
+                                                    <span>{t.nav[item.labelKey]}</span>
                                                 </NavLink>
                                             </SidebarMenuButton>
                                         </SidebarMenuItem>
@@ -120,7 +120,7 @@ export function AppLayout() {
                 </SidebarContent>
                 <SidebarFooter className="border-t p-4">
                     <div className="mb-2 text-sm">
-                        <p className="font-medium">{user?.name ?? 'User'}</p>
+                        <p className="font-medium">{user?.name ?? t.common.user}</p>
                         <p className="text-muted-foreground text-xs">{user?.role ?? ''}</p>
                     </div>
                     <div className="flex gap-2">
@@ -129,7 +129,7 @@ export function AppLayout() {
                             size="sm"
                             className="flex-1"
                             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-                            Theme
+                            {t.nav.theme}
                         </Button>
                         <Button
                             variant="outline"

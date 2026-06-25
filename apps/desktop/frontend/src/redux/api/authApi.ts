@@ -9,7 +9,7 @@ export interface PasswordResetResponse {
 
 export const authApi = apiSlice.injectEndpoints({
     endpoints: (builder) => ({
-        login: builder.mutation<LoginResponse, { email: string; password: string }>({
+        login: builder.mutation<LoginResponse, { contact: string; password: string }>({
             query: (body) => ({ url: '/login', method: 'POST', body }),
             async onQueryStarted(_arg, { queryFulfilled, dispatch }) {
                 try {
@@ -20,7 +20,7 @@ export const authApi = apiSlice.injectEndpoints({
                 }
             }
         }),
-        register: builder.mutation<RegistrationResponse, { name: string; email: string; password: string }>({
+        register: builder.mutation<RegistrationResponse, { name: string; contact: string; password: string }>({
             query: (body) => ({ url: '/registration', method: 'POST', body }),
             transformResponse: (response: ApiEnvelope<RegistrationResponse>) => unwrapData(response)
         }),
@@ -50,7 +50,7 @@ export const authApi = apiSlice.injectEndpoints({
                 }
             }
         }),
-        updateProfile: builder.mutation<{ user: User }, { name: string; email: string }>({
+        updateProfile: builder.mutation<{ user: User }, { name: string; contact: string }>({
             query: (body) => ({ url: '/update-user-info', method: 'PUT', body }),
             transformResponse: (response: ApiEnvelope<{ user: User }>) => unwrapData(response),
             invalidatesTags: ['Me'],
@@ -66,7 +66,24 @@ export const authApi = apiSlice.injectEndpoints({
         updatePassword: builder.mutation<ApiEnvelope<{ user: User }>, { oldPassword: string; newPassword: string }>({
             query: (body) => ({ url: '/update-user-password', method: 'PUT', body })
         }),
-        forgotPassword: builder.mutation<PasswordResetResponse, { email: string }>({
+        updateAvatar: builder.mutation<{ user: User }, File>({
+            query: (file) => {
+                const body = new FormData()
+                body.append('avatar', file)
+                return { url: '/update-user-avatar', method: 'PUT', body }
+            },
+            transformResponse: (response: ApiEnvelope<{ user: User }>) => unwrapData(response),
+            invalidatesTags: ['Me'],
+            async onQueryStarted(_arg, { queryFulfilled, dispatch }) {
+                try {
+                    const { data } = await queryFulfilled
+                    dispatch(setCredentials({ user: data.user }))
+                } catch {
+                    /* handled in UI */
+                }
+            }
+        }),
+        forgotPassword: builder.mutation<PasswordResetResponse, { contact: string }>({
             query: (body) => ({ url: '/forgot-password', method: 'POST', body }),
             transformResponse: (response: ApiEnvelope<PasswordResetResponse>) => unwrapData(response)
         }),
@@ -84,6 +101,7 @@ export const {
     useGetMeQuery,
     useLazyGetMeQuery,
     useUpdateProfileMutation,
+    useUpdateAvatarMutation,
     useUpdatePasswordMutation,
     useForgotPasswordMutation,
     useResetPasswordMutation

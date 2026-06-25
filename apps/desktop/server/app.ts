@@ -12,12 +12,14 @@ import orderRouter from './routes/order.route.js'
 import transactionRouter from './routes/transaction.route.js'
 import analyticsRouter from './routes/analytics.route.js'
 import productSaleRouter from './routes/productSale.route.js'
-import targetRouter from './routes/target.route.js'
 import supplierRouter from './routes/supplier.route.js'
 import restockRouter from './routes/restock.route.js'
 import whatsappRouter from './routes/whatsapp.route.js'
 import recipeRouter from './routes/recipe.route.js'
 import labourRouter from './routes/labour.route.js'
+import filesRouter from './routes/files.route.js'
+import settingsRouter from './routes/settings.route.js'
+import backupRouter from './routes/backup.route.js'
 
 export const app = express()
 
@@ -31,6 +33,9 @@ app.use(
 )
 app.use(express.static('public'))
 
+app.use('/api/v1/files', filesRouter)
+app.use('/api/v1', settingsRouter)
+app.use('/api/v1', backupRouter)
 app.use('/api/v1', userRouter)
 app.use('/api/v1', customerRouter)
 app.use('/api/v1', productRouter)
@@ -38,7 +43,6 @@ app.use('/api/v1', orderRouter)
 app.use('/api/v1', transactionRouter)
 app.use('/api/v1', analyticsRouter)
 app.use('/api/v1', productSaleRouter)
-app.use('/api/v1', targetRouter)
 app.use('/api/v1', supplierRouter)
 app.use('/api/v1', restockRouter)
 app.use('/api/v1', whatsappRouter)

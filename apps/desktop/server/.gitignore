@@ -17,6 +17,10 @@ auth/
 .env.*.local
 
 data/
+uploads/
+restore-uploads/
+restore-staging/
+.restore-pending.json
 *.log
 npm-debug.log*
 yarn-debug.log*

@@ -4,24 +4,18 @@ import { db } from '../utils/db.js'
 import { products, supplierProducts, suppliers } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
 import { createId, withLegacyId } from '../utils/mappers.js'
+import { assertValidWhatsAppContact } from '../utils/phone.js'
 
-export async function createSupplier(data: {
-    name: string
-    contact: string
-    businessName?: string
-    address?: string
-    email?: string
-    notes?: string
-}) {
+export async function createSupplier(data: { name: string; contact: string; businessName?: string; address?: string; notes?: string }) {
+    const contact = assertValidWhatsAppContact(data.contact, 'Contact')
     const [supplier] = await db
         .insert(suppliers)
         .values({
             id: createId(),
             name: data.name,
-            contact: data.contact,
+            contact,
             businessName: data.businessName,
             address: data.address,
-            email: data.email,
             notes: data.notes
         })
         .returning()
@@ -33,9 +27,14 @@ export async function updateSupplier(id: string, data: Partial<typeof suppliers.
     const [existing] = await db.select().from(suppliers).where(eq(suppliers.id, id)).limit(1)
     if (!existing) throw new AppError('Supplier not found', 404)
 
+    const payload = { ...data }
+    if (payload.contact) {
+        payload.contact = assertValidWhatsAppContact(payload.contact, 'Contact')
+    }
+
     const [supplier] = await db
         .update(suppliers)
-        .set({ ...data, updatedAt: new Date() })
+        .set({ ...payload, updatedAt: new Date() })
         .where(eq(suppliers.id, id))
         .returning()
 

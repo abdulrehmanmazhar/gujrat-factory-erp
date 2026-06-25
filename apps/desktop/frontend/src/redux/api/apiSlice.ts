@@ -1,6 +1,7 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react'
 import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolkit/query'
 import constants from '@/constants/app'
+import { getStoredDocumentLanguage } from '@/lib/i18n-storage'
 import { logout, setCredentials } from '@/redux/slices/authSlice'
 import type { RootState } from '@/redux/store'
 
@@ -12,6 +13,7 @@ const baseQuery = fetchBaseQuery({
         if (token) {
             headers.set('Authorization', `Bearer ${token}`)
         }
+        headers.set('X-Document-Language', getStoredDocumentLanguage())
         return headers
     }
 })
@@ -44,15 +46,17 @@ export const apiSlice = createApi({
         'Products',
         'Orders',
         'Users',
-        'Targets',
-        'Transactions',
+        'CustomerTransactions',
+        'SupplierTransactions',
         'Me',
         'Suppliers',
         'WhatsApp',
         'RestockOrders',
         'Recipes',
         'Labourers',
-        'LabourProduction'
+        'LabourProduction',
+        'LabourerTransactions',
+        'Settings'
     ],
     endpoints: () => ({})
 })

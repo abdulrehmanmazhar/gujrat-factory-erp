@@ -92,6 +92,9 @@
 
 import fs from 'fs'
 import { makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } from 'baileys'
+import { normalizeWhatsAppContact } from './phone.js'
+
+export { normalizeWhatsAppContact as formatWhatsAppContact }
 
 let sock
 let latestQr: string | null = null
@@ -178,15 +181,6 @@ export async function logoutWhatsapp(io) {
         console.error('Logout failed:', error)
         throw error
     }
-}
-
-export function formatWhatsAppContact(contact: string) {
-    let normalized = contact.replace(/[^0-9]/g, '')
-    if (normalized.startsWith('0')) normalized = `92${normalized.slice(1)}`
-    else if (normalized.startsWith('0092')) normalized = normalized.slice(2)
-    else if (normalized.startsWith('+92')) normalized = normalized.slice(1)
-    else if (!normalized.startsWith('92')) normalized = `92${normalized}`
-    return normalized.length === 12 ? normalized : null
 }
 
 function toJid(phoneNumber: string) {

@@ -21,12 +21,15 @@ export default function HelpPage() {
                         className="w-full">
                         <AccordionItem value="orders">
                             <AccordionTrigger>How do I manage orders?</AccordionTrigger>
-                            <AccordionContent>Go to Orders to view all orders, record payments, and inspect cart details.</AccordionContent>
+                            <AccordionContent>
+                                Go to Orders to view all orders, record installment payments, issue partial refunds, and inspect cart details.
+                            </AccordionContent>
                         </AccordionItem>
                         <AccordionItem value="payments">
-                            <AccordionTrigger>How do udhar payments work?</AccordionTrigger>
+                            <AccordionTrigger>How do partial payments and refunds work?</AccordionTrigger>
                             <AccordionContent>
-                                Use the Payments page to collect outstanding balances from orders with partial or no payment.
+                                On the Orders page, use Pay to collect outstanding balances in installments. Use Refund to return money to the
+                                customer in chunks — total refunds cannot exceed what was paid on the order.
                             </AccordionContent>
                         </AccordionItem>
                         <AccordionItem value="inventory">

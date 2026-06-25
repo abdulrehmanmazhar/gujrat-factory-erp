@@ -1,38 +1,96 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { getApiErrorMessage } from '@/lib/errors'
-import { useUpdatePasswordMutation, useUpdateProfileMutation } from '@/redux/api/authApi'
+import { isValidWhatsAppContact, WHATSAPP_NUMBER_HINT, formatDisplayContact } from '@/lib/phone'
+import { useUpdateAvatarMutation, useUpdatePasswordMutation, useUpdateProfileMutation } from '@/redux/api/authApi'
 import { selectCurrentUser } from '@/redux/slices/authSlice'
 import { toast } from 'sonner'
+
+function userInitials(name?: string) {
+    if (!name?.trim()) return '?'
+    return name
+        .trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase() ?? '')
+        .join('')
+}
 
 export default function ProfilePage() {
     const user = useSelector(selectCurrentUser)
     const [updateProfile, { isLoading: savingProfile }] = useUpdateProfileMutation()
+    const [updateAvatar, { isLoading: savingAvatar }] = useUpdateAvatarMutation()
     const [updatePassword, { isLoading: savingPassword }] = useUpdatePasswordMutation()
+    const fileInputRef = useRef<HTMLInputElement>(null)
 
     const [name, setName] = useState(user?.name ?? '')
-    const [email, setEmail] = useState(user?.email ?? '')
+    const [contact, setContact] = useState(user?.contact ?? '')
     const [oldPassword, setOldPassword] = useState('')
     const [newPassword, setNewPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
+    const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
 
     useEffect(() => {
         setName(user?.name ?? '')
-        setEmail(user?.email ?? '')
-    }, [user?.email, user?.name])
+        setContact(user?.contact ?? '')
+    }, [user?.contact, user?.name])
+
+    useEffect(() => {
+        return () => {
+            if (avatarPreview) URL.revokeObjectURL(avatarPreview)
+        }
+    }, [avatarPreview])
 
     const handleProfileSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+        if (!isValidWhatsAppContact(contact)) {
+            toast.error(`Enter a valid WhatsApp number (${WHATSAPP_NUMBER_HINT})`)
+            return
+        }
         try {
-            await updateProfile({ name, email }).unwrap()
+            await updateProfile({ name, contact }).unwrap()
             toast.success('Profile updated')
         } catch (err) {
             toast.error(getApiErrorMessage(err, 'Profile update failed'))
+        }
+    }
+
+    const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        if (!file.type.startsWith('image/')) {
+            toast.error('Please choose an image file')
+            return
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error('Image must be 5 MB or smaller')
+            return
+        }
+
+        const preview = URL.createObjectURL(file)
+        setAvatarPreview((prev) => {
+            if (prev) URL.revokeObjectURL(prev)
+            return preview
+        })
+
+        try {
+            await updateAvatar(file).unwrap()
+            toast.success('Avatar updated')
+        } catch (err) {
+            toast.error(getApiErrorMessage(err, 'Avatar upload failed'))
+            setAvatarPreview((prev) => {
+                if (prev) URL.revokeObjectURL(prev)
+                return null
+            })
+        } finally {
+            e.target.value = ''
         }
     }
 
@@ -57,6 +115,8 @@ export default function ProfilePage() {
         }
     }
 
+    const avatarSrc = avatarPreview ?? user?.avatar?.url
+
     return (
         <div className="mx-auto max-w-2xl space-y-6">
             <PageHeader
@@ -66,8 +126,41 @@ export default function ProfilePage() {
 
             <Card>
                 <CardHeader>
+                    <CardTitle>Profile photo</CardTitle>
+                    <CardDescription>Upload a photo for your account.</CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-wrap items-center gap-4">
+                    <Avatar className="size-20">
+                        <AvatarImage
+                            src={avatarSrc}
+                            alt={user?.name ?? 'Profile'}
+                        />
+                        <AvatarFallback className="text-lg">{userInitials(user?.name)}</AvatarFallback>
+                    </Avatar>
+                    <div className="space-y-2">
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleAvatarChange}
+                        />
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={savingAvatar}
+                            onClick={() => fileInputRef.current?.click()}>
+                            {savingAvatar ? 'Uploading...' : 'Change photo'}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">JPG, PNG or WebP · max 5 MB</p>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
                     <CardTitle>Account details</CardTitle>
-                    <CardDescription>Update your name and email address.</CardDescription>
+                    <CardDescription>Update your name and WhatsApp number.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <form
@@ -83,14 +176,18 @@ export default function ProfilePage() {
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="profile-email">Email</Label>
+                            <Label htmlFor="profile-contact">WhatsApp number</Label>
                             <Input
-                                id="profile-email"
-                                type="email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
+                                id="profile-contact"
+                                type="tel"
+                                value={contact}
+                                onChange={(e) => setContact(e.target.value)}
                                 required
                             />
+                            <p className="text-xs text-muted-foreground">
+                                {WHATSAPP_NUMBER_HINT}
+                                {user?.contact ? ` · Current: ${formatDisplayContact(user.contact)}` : ''}
+                            </p>
                         </div>
                         <div className="text-sm text-muted-foreground">Role: {user?.role ?? '—'}</div>
                         <Button

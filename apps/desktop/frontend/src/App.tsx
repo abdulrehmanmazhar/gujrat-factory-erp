@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { HashRouter } from 'react-router-dom'
 import { Provider, useSelector } from 'react-redux'
+import { HashRouter } from 'react-router-dom'
 import { ThemeProvider } from '@/context/ThemeProvider'
+import { LanguageProvider } from '@/context/LanguageProvider'
 import { AuthPage } from '@/components/auth/AuthPage'
 import { SplashScreen } from '@/components/SplashScreen'
+import { WhatsAppSetupGate } from '@/components/WhatsAppSetupGate'
 import { selectIsLoggedIn } from '@/redux/slices/authSlice'
 import store from '@/redux/store'
 import Router from '@/router'
@@ -17,14 +19,18 @@ function AppRoutes() {
 
 function AppShell() {
     return (
-        <ThemeProvider
-            defaultTheme="light"
-            storageKey="erp-ui-theme">
-            <HashRouter>
-                <AppRoutes />
-                <Toaster richColors />
-            </HashRouter>
-        </ThemeProvider>
+        <WhatsAppSetupGate>
+            <LanguageProvider>
+                <ThemeProvider
+                    defaultTheme="light"
+                    storageKey="erp-ui-theme">
+                    <HashRouter>
+                        <AppRoutes />
+                        <Toaster richColors />
+                    </HashRouter>
+                </ThemeProvider>
+            </LanguageProvider>
+        </WhatsAppSetupGate>
     )
 }
 

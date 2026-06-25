@@ -35,7 +35,7 @@ export default function CommunityPage() {
         const list = data?.users ?? []
         if (!search.trim()) return list
         const q = search.toLowerCase()
-        return list.filter((u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+        return list.filter((u) => u.name.toLowerCase().includes(q) || u.contact.toLowerCase().includes(q))
     }, [data, search])
 
     const currentUserId = currentUser?.id ?? currentUser?._id
@@ -59,7 +59,7 @@ export default function CommunityPage() {
                 loading={isLoading}
                 columns={[
                     { key: 'name', label: 'Name' },
-                    { key: 'email', label: 'Email' },
+                    { key: 'contact', label: 'WhatsApp' },
                     {
                         key: 'role',
                         label: 'Role',
@@ -137,7 +137,7 @@ export default function CommunityPage() {
                 open={!!deleteId}
                 onOpenChange={() => setDeleteId(null)}
                 title="Delete user?"
-                description="This user must have no orders, customers, transactions, targets, or other linked records."
+                description="This user must have no orders, customers, transactions, or other linked records."
                 onConfirm={async () => {
                     if (!deleteId) return
                     try {

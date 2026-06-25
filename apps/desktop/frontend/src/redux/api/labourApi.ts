@@ -1,8 +1,8 @@
 import { apiSlice } from '@/redux/api/apiSlice'
 import { unwrapData } from '@/lib/api-helpers'
-import type { ApiEnvelope, Labourer, LabourProductionEntry } from '@/types/api'
+import type { ApiEnvelope, Labourer, LabourProductionEntry, LabourTransactionCategory, LabourerTransaction } from '@/types/api'
 
-export const LABOUR_MUTATION_TAGS = ['Labourers', 'LabourProduction', 'Products', 'Transactions'] as const
+export const LABOUR_MUTATION_TAGS = ['Labourers', 'LabourProduction', 'LabourerTransactions', 'Products'] as const
 
 export const labourApi = apiSlice.injectEndpoints({
     endpoints: (builder) => ({
@@ -56,6 +56,25 @@ export const labourApi = apiSlice.injectEndpoints({
         >({
             query: (body) => ({ url: '/labour/production', method: 'POST', body }),
             invalidatesTags: [...LABOUR_MUTATION_TAGS]
+        }),
+        getLabourTransactions: builder.query<{ transactions: LabourerTransaction[] }, string | void>({
+            query: (labourerId) => ({
+                url: '/labour/transactions',
+                params: labourerId ? { labourerId } : undefined
+            }),
+            transformResponse: (response: ApiEnvelope<{ transactions: LabourerTransaction[] }>) => unwrapData(response),
+            providesTags: ['LabourerTransactions']
+        }),
+        createLabourTransaction: builder.mutation<
+            ApiEnvelope<{ transaction: LabourerTransaction }>,
+            { labourerId: string; amount: number; category: Exclude<LabourTransactionCategory, 'production'>; description: string }
+        >({
+            query: (body) => ({ url: '/labour/transactions', method: 'POST', body }),
+            invalidatesTags: ['LabourerTransactions']
+        }),
+        deleteLabourTransaction: builder.mutation<ApiEnvelope<null>, string>({
+            query: (id) => ({ url: `/labour/transactions/${id}`, method: 'DELETE' }),
+            invalidatesTags: ['LabourerTransactions']
         })
     })
 })
@@ -68,5 +87,8 @@ export const {
     useSetLabourRateMutation,
     useRemoveLabourRateMutation,
     useGetProductionEntriesQuery,
-    useRecordProductionMutation
+    useRecordProductionMutation,
+    useGetLabourTransactionsQuery,
+    useCreateLabourTransactionMutation,
+    useDeleteLabourTransactionMutation
 } = labourApi

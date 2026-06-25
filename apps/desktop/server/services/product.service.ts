@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { and, desc, eq } from 'drizzle-orm'
 import { db } from '../utils/db.js'
-import { productSales, products, productStockHistory, transactions } from '../models/tables.js'
+import { products, productSales, productStockHistory } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
 import { createId, withLegacyId } from '../utils/mappers.js'
 
@@ -68,17 +68,8 @@ export async function addProduct(data: {
         id: createId(),
         productId,
         qty: data.stockQty,
-        totalBill: data.totalBill,
         purchasePrice,
         recordedAt: new Date()
-    })
-
-    await db.insert(transactions).values({
-        id: createId(),
-        type: 'investment',
-        amount: data.totalBill,
-        description: `added new product ${data.name}(${data.category})`,
-        createdById: data.createdById
     })
 
     const history = await getProductHistory(productId)
@@ -156,7 +147,6 @@ export async function restockProduct(
         id: createId(),
         productId: id,
         qty: data.stockQty,
-        totalBill: data.totalBill,
         purchasePrice,
         recordedAt: new Date()
     })
@@ -173,14 +163,6 @@ export async function restockProduct(
         })
         .where(eq(products.id, id))
         .returning()
-
-    await db.insert(transactions).values({
-        id: createId(),
-        type: 'investment',
-        amount: data.totalBill,
-        description: `restocked the product ${target.name}(${target.category})`,
-        createdById: data.createdById
-    })
 
     return withLegacyId(edited)
 }
@@ -210,7 +192,6 @@ export async function adjustInventoryQty(productId: string, qtyDelta: number, op
             id: createId(),
             productId,
             qty: Math.abs(qtyDelta),
-            totalBill: 0,
             purchasePrice: options?.purchasePrice ?? product.purchasePrice ?? 0,
             recordedAt: new Date()
         })

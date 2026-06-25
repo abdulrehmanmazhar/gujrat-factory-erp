@@ -6,12 +6,29 @@ import { logger } from '../config/logger.js'
 import { createId } from './mappers.js'
 import { formatWhatsAppContact, isWhatsappConnected, sendDocument, sendMessage } from './whatsapp.js'
 import { getIo } from './socket.js'
+import { downloadBuffer, downloadText, uploadBuffer } from './rclone.js'
 
 const MAX_ATTEMPTS = 5
 let processing = false
 
+/** Stored in DB — only remote paths, not file contents. */
+type QueueFileRef = {
+    remotePath: string
+    fileName?: string
+    captionRemotePath?: string
+}
+
+/** Legacy rows may still embed content directly. */
 type QueueTextPayload = { message: string }
 type QueueDocumentPayload = { fileName: string; pdfBase64: string; caption?: string }
+
+function parsePayload(payload: string): QueueFileRef | QueueTextPayload | QueueDocumentPayload {
+    return JSON.parse(payload)
+}
+
+function isFileRef(payload: QueueFileRef | QueueTextPayload | QueueDocumentPayload): payload is QueueFileRef {
+    return typeof (payload as QueueFileRef).remotePath === 'string'
+}
 
 export async function getWhatsAppQueueStats() {
     const countsRows = await db
@@ -63,13 +80,17 @@ export async function enqueueWhatsAppText(contact: string, message: string) {
         return null
     }
 
+    const id = createId()
+    const { remotePath } = await uploadBuffer(Buffer.from(message, 'utf8'), `whatsapp-queue/${id}/message.txt`)
+    const payload: QueueFileRef = { remotePath, fileName: 'message.txt' }
+
     const [row] = await db
         .insert(whatsappQueue)
         .values({
-            id: createId(),
+            id,
             contact: normalized,
             kind: 'text',
-            payload: JSON.stringify({ message } satisfies QueueTextPayload),
+            payload: JSON.stringify(payload),
             status: 'pending'
         })
         .returning()
@@ -85,16 +106,20 @@ export async function enqueueWhatsAppDocument(contact: string, fileName: string,
         return null
     }
 
-    const payload: QueueDocumentPayload = {
-        fileName,
-        pdfBase64: pdfBuffer.toString('base64'),
-        ...(caption ? { caption } : {})
+    const id = createId()
+    const safeName = fileName.replace(/[^\w.\-]+/g, '_') || 'document.pdf'
+    const { remotePath } = await uploadBuffer(pdfBuffer, `whatsapp-queue/${id}/${safeName}`)
+
+    const payload: QueueFileRef = { remotePath, fileName: safeName }
+    if (caption) {
+        const captionUpload = await uploadBuffer(Buffer.from(caption, 'utf8'), `whatsapp-queue/${id}/caption.txt`)
+        payload.captionRemotePath = captionUpload.remotePath
     }
 
     const [row] = await db
         .insert(whatsappQueue)
         .values({
-            id: createId(),
+            id,
             contact: normalized,
             kind: 'document',
             payload: JSON.stringify(payload),
@@ -123,14 +148,36 @@ async function bumpAttempt(id: string, error: string) {
 }
 
 async function deliverItem(item: typeof whatsappQueue.$inferSelect) {
+    const parsed = parsePayload(item.payload)
+
+    if (isFileRef(parsed)) {
+        if (item.kind === 'text') {
+            const message = await downloadText(parsed.remotePath)
+            await sendMessage(item.contact, message)
+            return
+        }
+
+        if (item.kind === 'document') {
+            const fileBuffer = await downloadBuffer(parsed.remotePath)
+            const fileName = parsed.fileName || 'document.pdf'
+            await sendDocument(item.contact, fileBuffer, fileName)
+            if (parsed.captionRemotePath) {
+                const caption = await downloadText(parsed.captionRemotePath)
+                await sendMessage(item.contact, caption)
+            }
+            return
+        }
+    }
+
+    // Legacy embedded payloads (pre-rclone rows)
     if (item.kind === 'text') {
-        const { message } = JSON.parse(item.payload) as QueueTextPayload
+        const { message } = parsed as QueueTextPayload
         await sendMessage(item.contact, message)
         return
     }
 
     if (item.kind === 'document') {
-        const { fileName, pdfBase64, caption } = JSON.parse(item.payload) as QueueDocumentPayload
+        const { fileName, pdfBase64, caption } = parsed as QueueDocumentPayload
         await sendDocument(item.contact, Buffer.from(pdfBase64, 'base64'), fileName)
         if (caption) await sendMessage(item.contact, caption)
         return
