@@ -56,7 +56,8 @@ export const apiSlice = createApi({
         'Labourers',
         'LabourProduction',
         'LabourerTransactions',
-        'Settings'
+        'Settings',
+        'Analytics'
     ],
     endpoints: () => ({})
 })

@@ -20,6 +20,7 @@ import labourRouter from './routes/labour.route.js'
 import filesRouter from './routes/files.route.js'
 import settingsRouter from './routes/settings.route.js'
 import backupRouter from './routes/backup.route.js'
+import dashboardRouter from './routes/dashboard.route.js'
 
 export const app = express()
 
@@ -35,6 +36,7 @@ app.use(express.static('public'))
 
 app.use('/api/v1/files', filesRouter)
 app.use('/api/v1', settingsRouter)
+app.use('/api/v1', dashboardRouter)
 app.use('/api/v1', backupRouter)
 app.use('/api/v1', userRouter)
 app.use('/api/v1', customerRouter)

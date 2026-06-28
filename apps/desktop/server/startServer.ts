@@ -48,7 +48,7 @@ export async function startServer() {
             reject(error)
         })
 
-        server.listen(appConfig.PORT, () => {
+        server.listen(appConfig.PORT, '127.0.0.1', () => {
             server.removeAllListeners('error')
             logger.info(`Server running on port ${appConfig.PORT}`)
             resolve()

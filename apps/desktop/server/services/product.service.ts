@@ -10,6 +10,9 @@ export async function adjustProductStock(customerId: string, productId: string, 
     if (!product) throw new AppError('Product not found', 400)
 
     const newStockState = action === 'add' ? product.stockQty + qty : product.stockQty - qty
+    if (newStockState < 0) {
+        throw new AppError(`Insufficient stock for ${product.name}. Available: ${product.stockQty}, required: ${qty}`, 400)
+    }
 
     await db.insert(productSales).values({
         id: createId(),

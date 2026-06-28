@@ -4,6 +4,7 @@ import { db } from '../utils/db.js'
 import { customers, customerTransactions, users } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
 import { createId, withLegacyId } from '../utils/mappers.js'
+import { adjustCustomerUdhar } from '../utils/ledger.js'
 import { assertValidWhatsAppContact } from '../utils/phone.js'
 
 export async function addCustomer(data: { name: string; address: string; contact: string; createdById: string }) {
@@ -83,20 +84,20 @@ export async function deleteCustomer(id: string) {
 }
 
 export async function returnCustomerUdhar(id: string, amount: number, createdById: string) {
-    const [customer] = await db.select().from(customers).where(eq(customers.id, id)).limit(1)
-    if (!customer) throw new AppError('Customer not found', 404)
-    if (amount > customer.udhar) throw new AppError('Cannot pay more than udhar amount', 400)
+    return db.transaction(async (tx) => {
+        const [customer] = await tx.select().from(customers).where(eq(customers.id, id)).limit(1)
+        if (!customer) throw new AppError('Customer not found', 404)
+        if (amount > customer.udhar) throw new AppError('Cannot pay more than udhar amount', 400)
 
-    await db.insert(customerTransactions).values({
-        id: createId(),
-        customerId: id,
-        type: 'udhar_payment',
-        amount,
-        description: `${customer.name}-${customer.address} paid from his udhar ${customer.udhar}`,
-        createdById
+        await tx.insert(customerTransactions).values({
+            id: createId(),
+            customerId: id,
+            type: 'udhar_payment',
+            amount,
+            description: `${customer.name}-${customer.address} paid from his udhar ${customer.udhar}`,
+            createdById
+        })
+
+        return adjustCustomerUdhar(tx, id, -amount)
     })
-
-    const newUdhar = customer.udhar - amount
-    await db.update(customers).set({ udhar: newUdhar, updatedAt: new Date() }).where(eq(customers.id, id))
-    return newUdhar
 }

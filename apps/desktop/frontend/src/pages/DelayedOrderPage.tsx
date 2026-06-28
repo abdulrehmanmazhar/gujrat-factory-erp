@@ -35,9 +35,9 @@ export default function DelayedOrderPage() {
     const today = new Date().toISOString().slice(0, 10)
 
     const filteredProducts = useMemo(() => {
-        if (!productSearch.trim()) return products.filter((p) => p.inStock && p.stockQty > 0)
+        if (!productSearch.trim()) return products
         const q = productSearch.toLowerCase()
-        return products.filter((p) => p.inStock && p.stockQty > 0 && (p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)))
+        return products.filter((p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q))
     }, [products, productSearch])
 
     const selectedCustomer = customers.find((c) => (c.id ?? c._id) === customerId)
@@ -52,10 +52,6 @@ export default function DelayedOrderPage() {
             const id = product.id ?? product._id
             const existing = prev.find((l) => l.productId === id)
             if (existing) {
-                if (existing.qty >= product.stockQty) {
-                    toast.error('Not enough stock')
-                    return prev
-                }
                 return prev.map((l) => (l.productId === id ? { ...l, qty: l.qty + 1 } : l))
             }
             return [...prev, { productId: id, product, qty: 1 }]
@@ -70,10 +66,6 @@ export default function DelayedOrderPage() {
                         if (line.productId !== productId) return line
                         const nextQty = line.qty + delta
                         if (nextQty <= 0) return null
-                        if (nextQty > line.product.stockQty) {
-                            toast.error('Not enough stock')
-                            return line
-                        }
                         return { ...line, qty: nextQty }
                     })
                     .filter(Boolean) as CartLine[]
@@ -141,7 +133,7 @@ export default function DelayedOrderPage() {
         <div>
             <PageHeader
                 title="Delayed orders"
-                description="Schedule delivery for a future date. Stock is deducted when the delivery date arrives."
+                description="Schedule delivery for a future date. Orders can exceed current stock; stock is checked on the delivery date."
             />
 
             <div className="grid gap-6 lg:grid-cols-5">
@@ -206,11 +198,11 @@ export default function DelayedOrderPage() {
                                                 ) : null}
                                             </p>
                                         </div>
-                                        <Badge variant="outline">{product.stockQty} left</Badge>
+                                        <Badge variant={product.stockQty > 0 ? 'outline' : 'destructive'}>{product.stockQty} in stock</Badge>
                                     </button>
                                 ))}
                                 {filteredProducts.length === 0 ? (
-                                    <p className="col-span-full py-8 text-center text-sm text-muted-foreground">No products in stock</p>
+                                    <p className="col-span-full py-8 text-center text-sm text-muted-foreground">No products found</p>
                                 ) : null}
                             </div>
                         </CardContent>
@@ -288,7 +280,7 @@ export default function DelayedOrderPage() {
                             />
                             <p className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <CalendarClock className="size-3" />
-                                Stock will be deducted automatically on this date.
+                                Stock is deducted on the delivery date when enough stock is available; otherwise delivery moves forward by one day.
                             </p>
                         </div>
                         <div className="space-y-2">

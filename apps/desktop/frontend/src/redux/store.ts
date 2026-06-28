@@ -13,6 +13,7 @@ import '@/redux/api/recipesApi'
 import '@/redux/api/labourApi'
 import '@/redux/api/backupApi'
 import '@/redux/api/settingsApi'
+import '@/redux/api/analyticsApi'
 
 export const store = configureStore({
     reducer: {

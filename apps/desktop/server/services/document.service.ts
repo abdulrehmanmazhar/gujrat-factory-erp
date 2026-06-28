@@ -19,12 +19,16 @@ import {
 import { getDocumentLanguage, readAppSettings } from '../utils/appSettings.js'
 import type { Request } from 'express'
 
-export const ITEMS_PER_SLIP = 10
-export const SLIPS_PER_PAGE = 3
+/** Max item rows on the first page (full header + optional receipt banner + footer). */
+export const ITEMS_FIRST_PAGE = 28
+/** Max item rows on continuation pages (compact header). */
+export const ITEMS_CONTINUATION_PAGE = 36
+/** @deprecated use ITEMS_FIRST_PAGE — kept for callers that referenced the old constant */
+export const ITEMS_PER_SLIP = ITEMS_FIRST_PAGE
 const PDF_MARGIN_MM = 4
 const A4_HEIGHT_MM = 297
-/** Printable A4 height minus margins, divided evenly across slips per sheet */
-export const SLIP_HEIGHT_MM = (A4_HEIGHT_MM - PDF_MARGIN_MM * 2) / SLIPS_PER_PAGE
+/** Full printable A4 height — one slip occupies the entire page */
+export const SLIP_HEIGHT_MM = A4_HEIGHT_MM - PDF_MARGIN_MM * 2
 
 const templatesDir = path.join(moduleDir(import.meta.url), '../templates')
 const publicDir = path.join(moduleDir(import.meta.url), '../public')
@@ -114,18 +118,41 @@ function mapCartLines(cart: Array<Record<string, unknown>>) {
     })
 }
 
-function chunkCart<T>(cart: T[], size = ITEMS_PER_SLIP) {
-    if (!cart.length) return [[]]
-    const chunks: T[][] = []
-    for (let i = 0; i < cart.length; i += size) {
-        chunks.push(cart.slice(i, i + size))
+function firstPageCapacity(hasReceipt: boolean) {
+    return hasReceipt ? 22 : ITEMS_FIRST_PAGE
+}
+
+function countOrderPages(lineCount: number, hasReceipt: boolean) {
+    if (lineCount <= 0) return 1
+    const first = firstPageCapacity(hasReceipt)
+    if (lineCount <= first) return 1
+    return 1 + Math.ceil((lineCount - first) / ITEMS_CONTINUATION_PAGE)
+}
+
+function chunkLines<T>(lines: T[], hasReceipt: boolean) {
+    if (!lines.length) return [{ lines: [] as T[], capacity: firstPageCapacity(hasReceipt), isContinuation: false }]
+
+    const chunks: Array<{ lines: T[]; capacity: number; isContinuation: boolean }> = []
+    let offset = 0
+    let pageIndex = 0
+
+    while (offset < lines.length) {
+        const capacity = pageIndex === 0 ? firstPageCapacity(hasReceipt) : ITEMS_CONTINUATION_PAGE
+        chunks.push({
+            lines: lines.slice(offset, offset + capacity),
+            capacity,
+            isContinuation: pageIndex > 0
+        })
+        offset += capacity
+        pageIndex += 1
     }
+
     return chunks
 }
 
-function padLines(lines: Array<Record<string, unknown> | null>) {
+function padLines(lines: Array<Record<string, unknown> | null>, capacity: number) {
     const padded = [...lines]
-    while (padded.length < ITEMS_PER_SLIP) padded.push(null)
+    while (padded.length < capacity) padded.push(null)
     return padded
 }
 
@@ -142,14 +169,15 @@ export function buildSlipsFromOrder(
     const discount = order.discount ?? 0
     const grandTotal = Math.max(price - discount, 0)
     const paid = order.payment ?? 0
-    const cartChunks = chunkCart(order.cart ?? [])
+    const hasReceipt = Boolean(options.receipt)
     const allLines = mapCartLines(order.cart ?? [])
+    const lineChunks = chunkLines(allLines, hasReceipt)
+    const partTotal = countOrderPages(allLines.length, hasReceipt)
+    let lineNumberOffset = 0
 
-    return cartChunks.map((cartChunk, index) => {
-        const lines = mapCartLines(cartChunk)
-        const lineNumberOffset = index * ITEMS_PER_SLIP
-
-        return {
+    return lineChunks.map((chunk, index) => {
+        const lines = chunk.lines
+        const slip = {
             documentTitle: options.documentTitle ?? invoiceTitle(lang),
             orderNumber: order.orderNumber,
             customer: {
@@ -168,29 +196,25 @@ export function buildSlipsFromOrder(
             paid,
             outstanding: Math.max(grandTotal - paid, 0),
             lines,
-            paddedLines: padLines(lines),
+            paddedLines: padLines(lines, chunk.capacity),
             partIndex: index + 1,
-            partTotal: cartChunks.length,
-            showTotals: index === cartChunks.length - 1,
+            partTotal,
+            showTotals: index === lineChunks.length - 1,
+            isContinuation: chunk.isContinuation,
             lineNumberOffset,
+            rowCapacity: chunk.capacity,
+            itemRowHeightPercent: 100 / chunk.capacity,
             allLinesCount: allLines.length,
-            receipt: options.receipt ?? null
+            receipt: chunk.isContinuation ? null : (options.receipt ?? null)
         }
+        lineNumberOffset += lines.length
+        return slip
     })
 }
 
+/** One slip (or continuation page) per physical PDF page. */
 export function packSlipsIntoPages(slips: ReturnType<typeof buildSlipsFromOrder>) {
-    const pages: Array<{ slips: Array<(typeof slips)[number] | null> }> = []
-
-    for (let i = 0; i < slips.length; i += SLIPS_PER_PAGE) {
-        const pageSlips: Array<(typeof slips)[number] | null> = []
-        for (let j = 0; j < SLIPS_PER_PAGE; j++) {
-            pageSlips.push(slips[i + j] ?? null)
-        }
-        pages.push({ slips: pageSlips })
-    }
-
-    return pages
+    return slips.map((slip) => ({ slips: [slip] }))
 }
 
 export async function buildSlipsForOrders(orderIds: string[], documentTitle?: string, lang?: DocumentLanguage) {
@@ -217,15 +241,12 @@ export async function renderOrderDocumentPdf(
             pages,
             company,
             logoDataUrl: getLogoDataUrl(),
-            itemsPerSlip: ITEMS_PER_SLIP,
             lang: documentLanguage,
             dir,
             labels,
             fontCss: getDocumentFontCss(documentLanguage),
             fontFamily: getDocumentFontFamily(documentLanguage),
-            slipHeightMm: `${SLIP_HEIGHT_MM}mm`,
-            slipsPerPage: SLIPS_PER_PAGE,
-            itemRowHeightPercent: 100 / ITEMS_PER_SLIP,
+            pageHeightMm: `${SLIP_HEIGHT_MM}mm`,
             formatPage: (current: number, total: number) => formatDocPage(documentLanguage, current, total)
         },
         engine: 'ejs',

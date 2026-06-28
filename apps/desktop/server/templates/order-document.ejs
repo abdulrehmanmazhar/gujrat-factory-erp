@@ -21,21 +21,19 @@
         }
         .sheet {
             width: 100%;
+            height: <%= pageHeightMm %>;
             page-break-after: always;
-        }
-        .sheet:last-child { page-break-after: auto; }
-        /* One third of printable A4 height per slip */
-        .invoice-page {
-            width: 100%;
-            height: <%= slipHeightMm %>;
-            padding: 0;
-            border-bottom: 1px dashed #cbd5e1;
             page-break-inside: avoid;
         }
-        .sheet .invoice-page:last-child { border-bottom: none; }
+        .sheet:last-child { page-break-after: auto; }
+        .invoice-page {
+            width: 100%;
+            height: <%= pageHeightMm %>;
+            padding: 0;
+        }
         .slip-layout {
             width: 100%;
-            height: <%= slipHeightMm %>;
+            height: <%= pageHeightMm %>;
             border-collapse: collapse;
             table-layout: fixed;
         }
@@ -43,74 +41,87 @@
             padding: 0;
             vertical-align: top;
         }
-        .slip-header-cell { padding: 1mm 2mm 0.5mm; }
+        .slip-header-cell { padding: 2mm 3mm 1mm; }
+        .slip-header-cell.compact { padding: 1.5mm 3mm 1mm; }
         .slip-items-cell {
             height: 100%;
-            padding: 0 2mm;
+            padding: 0 3mm;
             vertical-align: top;
         }
         .slip-footer-cell {
-            padding: 0.5mm 2mm 1mm;
+            padding: 1mm 3mm 2mm;
             vertical-align: bottom;
         }
         .logo-wrap {
             text-align: center;
-            margin-bottom: 0.5mm;
+            margin-bottom: 1mm;
         }
         .logo-wrap img {
-            max-height: 9mm;
-            max-width: 36mm;
+            max-height: 14mm;
+            max-width: 48mm;
             object-fit: contain;
         }
+        .logo-wrap.compact img {
+            max-height: 10mm;
+            max-width: 36mm;
+        }
         .logo-fallback {
-            width: 9mm;
-            height: 9mm;
+            width: 12mm;
+            height: 12mm;
             border-radius: 50%;
             background: #e2e8f0;
             color: #475569;
-            font-size: 8px;
+            font-size: 9px;
             font-weight: 700;
             display: inline-block;
-            line-height: 9mm;
+            line-height: 12mm;
             text-align: center;
         }
         .company-contact {
             text-align: center;
-            font-size: 9px;
+            font-size: 10px;
             color: #64748b;
-            line-height: 1.15;
-            margin-bottom: 0.5mm;
+            line-height: 1.2;
+            margin-bottom: 1mm;
         }
         .doc-type {
             text-align: center;
-            font-size: 13px;
+            font-size: 16px;
             font-weight: 700;
             color: #0f766e;
             text-transform: uppercase;
-            letter-spacing: 0.3px;
-            margin: 0.2mm 0;
+            letter-spacing: 0.4px;
+            margin: 0.5mm 0;
         }
         .order-meta-line {
             text-align: center;
-            font-size: 9px;
+            font-size: 10px;
+            color: #64748b;
+            margin-bottom: 1.5mm;
+        }
+        .compact-meta {
+            text-align: center;
+            font-size: 10px;
             color: #64748b;
             margin-bottom: 1mm;
+            line-height: 1.35;
         }
+        .compact-meta strong { color: #334155; }
         .receipt-banner {
             background: #ecfdf5;
             border: 1px solid #6ee7b7;
             border-radius: 2px;
-            padding: 1mm 1.5mm;
-            margin-bottom: 1mm;
-            font-size: 10px;
-            line-height: 1.25;
+            padding: 1.5mm 2mm;
+            margin-bottom: 1.5mm;
+            font-size: 11px;
+            line-height: 1.3;
         }
         .receipt-banner strong { color: #047857; }
         .meta-table {
             width: 100%;
             border-collapse: collapse;
             font-size: 11px;
-            line-height: 1.2;
+            line-height: 1.25;
         }
         .meta-table td {
             vertical-align: top;
@@ -119,7 +130,7 @@
         }
         .meta-left { text-align: left; }
         .meta-right { text-align: right; }
-        .meta-table p { margin: 0 0 0.4mm; }
+        .meta-table p { margin: 0 0 0.6mm; }
         .meta-table strong { color: #334155; font-weight: 700; }
         .items-table {
             width: 100%;
@@ -131,7 +142,7 @@
         .items-table th {
             background: #0f766e;
             color: #fff;
-            padding: 0.8mm 1.2mm;
+            padding: 1mm 1.5mm;
             text-align: left;
             font-weight: 700;
             font-size: 10px;
@@ -139,7 +150,7 @@
         }
         html[dir="rtl"] .items-table th { text-align: right; }
         .items-table td {
-            padding: 0.6mm 1.2mm;
+            padding: 0.8mm 1.5mm;
             border: 1px solid #e2e8f0;
             vertical-align: middle;
             overflow: hidden;
@@ -168,17 +179,17 @@
         .message-box {
             font-size: 10px;
             color: #475569;
-            line-height: 1.25;
+            line-height: 1.3;
             text-align: left;
-            padding-right: 3mm;
+            padding-right: 4mm;
         }
         html[dir="rtl"] .message-box {
             text-align: right;
             padding-right: 0;
-            padding-left: 3mm;
+            padding-left: 4mm;
         }
         .totals-box {
-            width: 50mm;
+            width: 55mm;
             margin-left: auto;
         }
         html[dir="rtl"] .totals-box { margin-left: 0; margin-right: auto; }
@@ -187,7 +198,7 @@
             border-collapse: collapse;
         }
         .totals-line td {
-            padding: 0.3mm 0;
+            padding: 0.4mm 0;
             vertical-align: baseline;
         }
         .totals-line .label { text-align: left; padding-right: 3mm; }
@@ -196,13 +207,13 @@
         html[dir="rtl"] .totals-line .value { text-align: left; }
         .totals-line.grand td {
             font-weight: 700;
-            font-size: 12px;
+            font-size: 13px;
             color: #0f766e;
             border-top: 1px solid #0f766e;
-            padding-top: 1mm;
+            padding-top: 1.2mm;
         }
         .continued {
-            font-size: 9px;
+            font-size: 10px;
             color: #64748b;
             text-align: right;
             font-style: italic;
@@ -218,12 +229,29 @@
 </head>
 <body>
     <% pages.forEach(function(page) { %>
+    <% page.slips.forEach(function(slip) { %>
     <div class="sheet">
-        <% page.slips.filter(function(slip) { return slip; }).forEach(function(slip) { %>
         <div class="invoice-page">
             <table class="slip-layout" cellspacing="0" cellpadding="0">
                 <tr>
-                    <td class="slip-header-cell">
+                    <td class="slip-header-cell<%= slip.isContinuation ? ' compact' : '' %>">
+                        <% if (slip.isContinuation) { %>
+                        <div class="logo-wrap compact">
+                            <% if (logoDataUrl) { %>
+                            <img src="<%= logoDataUrl %>" alt="Logo" />
+                            <% } else { %>
+                            <span class="logo-fallback">LOGO</span>
+                            <% } %>
+                        </div>
+                        <div class="doc-type"><%= slip.documentTitle %></div>
+                        <div class="compact-meta">
+                            <%= labels.orderNumber %><strong><%= slip.orderNumber ?? '—' %></strong>
+                            <% if (slip.partTotal > 1) { %>
+                            · <%= formatPage(slip.partIndex, slip.partTotal) %>
+                            <% } %>
+                            · <strong><%= slip.customer.name %></strong>
+                        </div>
+                        <% } else { %>
                         <div class="logo-wrap">
                             <% if (logoDataUrl) { %>
                             <img src="<%= logoDataUrl %>" alt="Logo" />
@@ -268,6 +296,7 @@
                                 </td>
                             </tr>
                         </table>
+                        <% } %>
                     </td>
                 </tr>
                 <tr>
@@ -285,7 +314,7 @@
                             </thead>
                             <tbody>
                                 <% slip.paddedLines.forEach(function(line, index) { %>
-                                <tr class="<%= line ? '' : 'empty-row' %>" style="height: <%= itemRowHeightPercent %>%;">
+                                <tr class="<%= line ? '' : 'empty-row' %>" style="height: <%= slip.itemRowHeightPercent %>%;">
                                     <td class="col-num"><%= line ? slip.lineNumberOffset + index + 1 : '&nbsp;' %></td>
                                     <td class="col-desc"><%= line ? line.description : '&nbsp;' %></td>
                                     <td class="col-qty"><%= line ? line.qty : '&nbsp;' %></td>
@@ -319,6 +348,10 @@
                                                 <td class="label"><%= labels.discount %></td>
                                                 <td class="value"><%= labels.pkr %> <%= Number(slip.discount).toLocaleString() %></td>
                                             </tr>
+                                            <tr>
+                                                <td class="label"><%= labels.tax %></td>
+                                                <td class="value"><%= labels.pkr %> 0</td>
+                                            </tr>
                                             <% if (slip.paid > 0 || slip.receipt) { %>
                                             <tr>
                                                 <td class="label"><%= labels.paid %></td>
@@ -348,8 +381,8 @@
                 </tr>
             </table>
         </div>
-        <% }); %>
     </div>
+    <% }); %>
     <% }); %>
 </body>
 </html>

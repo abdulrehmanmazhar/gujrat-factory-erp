@@ -1,6 +1,6 @@
 // @ts-nocheck
 
-import { and, desc, eq, inArray, isNull, lte, or } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm'
 import { db } from '../utils/db.js'
 import { customerTransactions, customers, orderItems, orders, products, users } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
@@ -11,6 +11,8 @@ import { readAppSettings } from '../utils/appSettings.js'
 import { buildPaymentReminderWhatsAppMessage } from '../utils/documentI18n.js'
 import { company } from './document.service.js'
 import { adjustProductStock, findProductsByIds } from './product.service.js'
+import { adjustCustomerUdhar, orderOutstanding } from '../utils/ledger.js'
+import { adjustProductStockTx, canFulfillOrderItems, deductOrderStockTx, restoreOrderStockTx } from '../utils/inventory.js'
 
 type CartInput = { productId: string; qty: number }[]
 type OrderMode = 'pos' | 'delayed'
@@ -85,18 +87,16 @@ async function upsertCartItems(orderId: string, cart: CartInput, productMap: Map
 
 async function deductOrderStock(orderId: string, customerId: string) {
     const items = await getOrderItemsWithProducts(orderId)
-    for (const item of items) {
-        await adjustProductStock(customerId, item.productId, item.qty, 'minus')
-    }
-    await db.update(orders).set({ stockDeducted: true, updatedAt: new Date() }).where(eq(orders.id, orderId))
+    await db.transaction(async (tx) => {
+        await deductOrderStockTx(tx, orderId, customerId, items)
+    })
 }
 
 async function restoreOrderStock(orderId: string, customerId: string) {
     const items = await getOrderItemsWithProducts(orderId)
-    for (const item of items) {
-        await adjustProductStock(customerId, item.productId, item.qty, 'add')
-    }
-    await db.update(orders).set({ stockDeducted: false, updatedAt: new Date() }).where(eq(orders.id, orderId))
+    await db.transaction(async (tx) => {
+        await restoreOrderStockTx(tx, orderId, customerId, items)
+    })
 }
 
 async function processCart(customerId: string, createdById: string, cart: CartInput, deductStock: boolean) {
@@ -212,55 +212,98 @@ async function recordPaymentTransaction(
 async function applyOrderRefund(orderId: string, refundAmount: number, userId: string, description?: string) {
     if (refundAmount <= 0) return null
 
-    const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
-    if (!order) throw new AppError('Order not found', 404)
+    const updated = await db.transaction(async (tx) => {
+        const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+        if (!order) throw new AppError('Order not found', 404)
 
-    const paid = order.payment ?? 0
-    const alreadyRefunded = order.refunded ?? 0
-    const refundable = paid - alreadyRefunded
-    if (refundAmount > refundable) {
-        throw new AppError(`Refund cannot exceed refundable amount (${refundable})`, 400)
-    }
+        const paid = order.payment ?? 0
+        const alreadyRefunded = order.refunded ?? 0
+        const refundable = paid - alreadyRefunded
+        if (refundAmount > refundable) {
+            throw new AppError(`Refund cannot exceed refundable amount (${refundable})`, 400)
+        }
 
-    const [updated] = await db
-        .update(orders)
-        .set({ refunded: alreadyRefunded + refundAmount, updatedAt: new Date() })
-        .where(eq(orders.id, orderId))
-        .returning()
+        const [saved] = await tx
+            .update(orders)
+            .set({ refunded: alreadyRefunded + refundAmount, updatedAt: new Date() })
+            .where(eq(orders.id, orderId))
+            .returning()
 
-    await recordPaymentTransaction(orderId, order.customerId, refundAmount, userId, 'refund', description)
+        await tx.insert(customerTransactions).values({
+            id: createId(),
+            customerId: order.customerId,
+            orderId,
+            type: 'refund',
+            amount: refundAmount,
+            description: description ?? 'Order refund',
+            createdById: userId
+        })
+
+        await adjustCustomerUdhar(tx, order.customerId, refundAmount)
+
+        return saved
+    })
+
     return withLegacyId(updated)
 }
 
-async function applyOrderPayment(orderId: string, payment: number, userId: string, markDelivered: boolean) {
-    const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+async function applyOrderPaymentInternal(
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+    orderId: string,
+    payment: number,
+    userId: string,
+    markDelivered: boolean
+) {
+    const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1)
     if (!order) throw new AppError('Order not found', 404)
 
     const payable = orderPayable(order.price ?? 0, order.discount ?? 0)
     const alreadyPaid = order.payment ?? 0
     if (alreadyPaid + payment > payable) throw new AppError('Cannot pay more than remaining amount', 400)
 
-    const [customer] = await db.select().from(customers).where(eq(customers.id, order.customerId)).limit(1)
-    if (!customer) throw new AppError('Customer not found', 404)
-
-    const newPaid = alreadyPaid + payment
-    const remainingAfter = payable - newPaid
-    const newUdhar = Math.max((customer.udhar || 0) + remainingAfter, 0)
-
-    const [updatedOrder] = await db
+    const [updatedOrder] = await tx
         .update(orders)
         .set({
-            payment: newPaid,
+            payment: alreadyPaid + payment,
             deliveryStatus: markDelivered ? true : order.deliveryStatus,
             updatedAt: new Date()
         })
         .where(eq(orders.id, orderId))
         .returning()
 
-    if (payment > 0) await recordPaymentTransaction(orderId, order.customerId, payment, userId)
+    if (payment > 0) {
+        await tx.insert(customerTransactions).values({
+            id: createId(),
+            customerId: order.customerId,
+            orderId,
+            type: 'sale',
+            amount: payment,
+            description: 'Sales from order',
+            createdById: userId
+        })
+        await adjustCustomerUdhar(tx, order.customerId, -payment)
+    }
 
-    await db.update(customers).set({ udhar: newUdhar, updatedAt: new Date() }).where(eq(customers.id, customer.id))
     return withLegacyId(updatedOrder)
+}
+
+async function applyOrderPayment(orderId: string, payment: number, userId: string, markDelivered: boolean) {
+    const updatedOrder = await db.transaction(async (tx) => applyOrderPaymentInternal(tx, orderId, payment, userId, markDelivered))
+
+    if (payment > 0) {
+        const [txn] = await db
+            .select()
+            .from(customerTransactions)
+            .where(and(eq(customerTransactions.orderId, orderId), eq(customerTransactions.type, 'sale')))
+            .orderBy(desc(customerTransactions.createdAt))
+            .limit(1)
+        if (txn) {
+            const { queueTransactionReceiptWhatsApp } = await import('./receipt.service.js')
+            await queueTransactionReceiptWhatsApp(txn.id)
+        }
+    }
+
+    return updatedOrder
 }
 
 async function finalizeOrder(
@@ -279,30 +322,50 @@ async function finalizeOrder(
     delivery.setUTCHours(0, 0, 0, 0)
 
     const isPos = orderMode === 'pos'
+    const payable = orderPayable(price, discount)
+    const stockItems = items.map((item) => ({ productId: item.productId, qty: item.qty }))
 
-    const [order] = await db
-        .update(orders)
-        .set({
-            orderNumber: await getNextOrderNumber(),
-            deliveryDate: delivery,
-            message,
-            status: 'saved',
-            orderMode,
-            price,
-            discount,
-            deliveryStatus: isPos,
-            updatedAt: new Date()
-        })
-        .where(eq(orders.id, orderId))
-        .returning()
+    const order = await db.transaction(async (tx) => {
+        const [saved] = await tx
+            .update(orders)
+            .set({
+                orderNumber: await getNextOrderNumber(),
+                deliveryDate: delivery,
+                message,
+                status: 'saved',
+                orderMode,
+                price,
+                discount,
+                deliveryStatus: isPos,
+                updatedAt: new Date()
+            })
+            .where(eq(orders.id, orderId))
+            .returning()
 
-    if (isPos) {
-        await deductOrderStock(orderId, customerId)
-        if (typeof initialPayment === 'number' && initialPayment > 0 && userId) {
-            await applyOrderPayment(orderId, initialPayment, userId, true)
+        await adjustCustomerUdhar(tx, customerId, payable)
+
+        if (isPos) {
+            await deductOrderStockTx(tx, orderId, customerId, stockItems)
         }
-    } else if (typeof initialPayment === 'number' && initialPayment > 0 && userId) {
-        await applyOrderPayment(orderId, initialPayment, userId, false)
+
+        if (typeof initialPayment === 'number' && initialPayment > 0 && userId) {
+            await applyOrderPaymentInternal(tx, orderId, initialPayment, userId, isPos)
+        }
+
+        return saved
+    })
+
+    if (typeof initialPayment === 'number' && initialPayment > 0 && userId) {
+        const [txn] = await db
+            .select()
+            .from(customerTransactions)
+            .where(and(eq(customerTransactions.orderId, orderId), eq(customerTransactions.type, 'sale')))
+            .orderBy(desc(customerTransactions.createdAt))
+            .limit(1)
+        if (txn) {
+            const { queueTransactionReceiptWhatsApp } = await import('./receipt.service.js')
+            await queueTransactionReceiptWhatsApp(txn.id)
+        }
     }
 
     await queueOrderInvoice(orderId)
@@ -337,11 +400,16 @@ export async function deleteCartItem(orderId: string, index: number) {
     const cartItem = items[index]
     if (!cartItem) throw new AppError('Cart item not found', 400)
 
-    const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
-    if (!order) throw new AppError('Order not found', 400)
-    if (order.stockDeducted) await adjustProductStock(order.customerId, cartItem.productId, cartItem.qty, 'add')
+    await db.transaction(async (tx) => {
+        const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+        if (!order) throw new AppError('Order not found', 400)
 
-    await db.delete(orderItems).where(eq(orderItems.id, cartItem.id))
+        if (order.stockDeducted) {
+            await adjustProductStockTx(tx, order.customerId, cartItem.productId, cartItem.qty, 'add')
+        }
+
+        await tx.delete(orderItems).where(eq(orderItems.id, cartItem.id))
+    })
 }
 
 export async function addOrder(orderId: string, deliveryDate: string, message = '', additionalDiscount = 0) {
@@ -354,42 +422,53 @@ export async function addOrder(orderId: string, deliveryDate: string, message = 
 }
 
 export async function cancelOrder(orderId: string, refundAmount: number, userId: string) {
-    const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
-    if (!order) throw new AppError('Order not found', 404)
-    if (order.status === 'cancelled') throw new AppError('Order is already cancelled', 400)
-    if (order.deliveryStatus) throw new AppError('Delivered orders cannot be cancelled', 400)
-    if (order.returnedAt) throw new AppError('Returned orders cannot be cancelled', 400)
-    if (refundAmount < 0) throw new AppError('Refund amount must be non-negative', 400)
+    const updated = await db.transaction(async (tx) => {
+        const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+        if (!order) throw new AppError('Order not found', 404)
+        if (order.status === 'cancelled') throw new AppError('Order is already cancelled', 400)
+        if (order.deliveryStatus) throw new AppError('Delivered orders cannot be cancelled', 400)
+        if (order.returnedAt) throw new AppError('Returned orders cannot be cancelled', 400)
+        if (refundAmount < 0) throw new AppError('Refund amount must be non-negative', 400)
 
-    const paid = order.payment ?? 0
-    const alreadyRefunded = order.refunded ?? 0
-    if (refundAmount > paid - alreadyRefunded) {
-        throw new AppError('Refund cannot exceed amount paid minus refunds already issued', 400)
-    }
+        const paid = order.payment ?? 0
+        const alreadyRefunded = order.refunded ?? 0
+        if (refundAmount > paid - alreadyRefunded) {
+            throw new AppError('Refund cannot exceed amount paid minus refunds already issued', 400)
+        }
 
-    if (order.stockDeducted) await restoreOrderStock(orderId, order.customerId)
+        const items = await getOrderItemsWithProducts(orderId)
+        if (order.stockDeducted) {
+            await restoreOrderStockTx(
+                tx,
+                orderId,
+                order.customerId,
+                items.map((i) => ({ productId: i.productId, qty: i.qty }))
+            )
+        }
 
-    const [customer] = await db.select().from(customers).where(eq(customers.id, order.customerId)).limit(1)
-    if (!customer) throw new AppError('Customer not found', 404)
+        const outstanding = orderOutstanding(order.price ?? 0, order.discount ?? 0, paid)
+        await adjustCustomerUdhar(tx, order.customerId, -outstanding)
 
-    const payable = orderPayable(order.price ?? 0, order.discount ?? 0)
-    const outstandingFromOrder = Math.max(0, payable - paid)
-    const newUdhar = Math.max((customer.udhar || 0) - outstandingFromOrder, 0)
+        const [saved] = await tx.update(orders).set({ status: 'cancelled', updatedAt: new Date() }).where(eq(orders.id, orderId)).returning()
 
-    const [updated] = await db
-        .update(orders)
-        .set({
-            status: 'cancelled',
-            updatedAt: new Date()
-        })
-        .where(eq(orders.id, orderId))
-        .returning()
+        if (refundAmount > 0) {
+            await tx
+                .update(orders)
+                .set({ refunded: alreadyRefunded + refundAmount, updatedAt: new Date() })
+                .where(eq(orders.id, orderId))
+            await tx.insert(customerTransactions).values({
+                id: createId(),
+                customerId: order.customerId,
+                orderId,
+                type: 'refund',
+                amount: refundAmount,
+                description: 'Refund on order cancellation',
+                createdById: userId
+            })
+        }
 
-    await db.update(customers).set({ udhar: newUdhar, updatedAt: new Date() }).where(eq(customers.id, customer.id))
-
-    if (refundAmount > 0) {
-        await applyOrderRefund(orderId, refundAmount, userId, 'Refund on order cancellation')
-    }
+        return saved
+    })
 
     const items = await getOrderItemsWithProducts(orderId)
     const [fresh] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
@@ -397,34 +476,61 @@ export async function cancelOrder(orderId: string, refundAmount: number, userId:
 }
 
 export async function returnOrder(orderId: string, refundAmount: number, userId: string) {
-    const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
-    if (!order) throw new AppError('Order not found', 404)
-    if (order.status === 'cancelled') throw new AppError('Cancelled orders cannot be returned', 400)
-    if (!order.deliveryStatus) throw new AppError('Only delivered orders can be returned', 400)
-    if (order.returnedAt) throw new AppError('Order has already been returned', 400)
-    if (refundAmount < 0) throw new AppError('Refund amount must be non-negative', 400)
+    const updated = await db.transaction(async (tx) => {
+        const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+        if (!order) throw new AppError('Order not found', 404)
+        if (order.status === 'cancelled') throw new AppError('Cancelled orders cannot be returned', 400)
+        if (!order.deliveryStatus) throw new AppError('Only delivered orders can be returned', 400)
+        if (order.returnedAt) throw new AppError('Order has already been returned', 400)
+        if (refundAmount < 0) throw new AppError('Refund amount must be non-negative', 400)
 
-    const paid = order.payment ?? 0
-    const alreadyRefunded = order.refunded ?? 0
-    if (refundAmount > paid - alreadyRefunded) {
-        throw new AppError('Refund cannot exceed amount paid minus refunds already issued', 400)
-    }
+        const paid = order.payment ?? 0
+        const alreadyRefunded = order.refunded ?? 0
+        if (refundAmount > paid - alreadyRefunded) {
+            throw new AppError('Refund cannot exceed amount paid minus refunds already issued', 400)
+        }
 
-    if (order.stockDeducted) await restoreOrderStock(orderId, order.customerId)
+        const items = await getOrderItemsWithProducts(orderId)
+        if (order.stockDeducted) {
+            await restoreOrderStockTx(
+                tx,
+                orderId,
+                order.customerId,
+                items.map((i) => ({ productId: i.productId, qty: i.qty }))
+            )
+        }
 
-    const [updated] = await db
-        .update(orders)
-        .set({
-            returnedAt: new Date(),
-            status: 'returned',
-            updatedAt: new Date()
-        })
-        .where(eq(orders.id, orderId))
-        .returning()
+        const outstanding = orderOutstanding(order.price ?? 0, order.discount ?? 0, paid)
+        await adjustCustomerUdhar(tx, order.customerId, -outstanding)
 
-    if (refundAmount > 0) {
-        await applyOrderRefund(orderId, refundAmount, userId, 'Refund on order return')
-    }
+        const [saved] = await tx
+            .update(orders)
+            .set({
+                returnedAt: new Date(),
+                status: 'returned',
+                updatedAt: new Date()
+            })
+            .where(eq(orders.id, orderId))
+            .returning()
+
+        if (refundAmount > 0) {
+            await tx
+                .update(orders)
+                .set({ refunded: alreadyRefunded + refundAmount, updatedAt: new Date() })
+                .where(eq(orders.id, orderId))
+            await tx.insert(customerTransactions).values({
+                id: createId(),
+                customerId: order.customerId,
+                orderId,
+                type: 'refund',
+                amount: refundAmount,
+                description: 'Refund on order return',
+                createdById: userId
+            })
+        }
+
+        return saved
+    })
 
     const items = await getOrderItemsWithProducts(orderId)
     const [fresh] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
@@ -499,51 +605,59 @@ export async function recordOrderRefund(orderId: string, refundAmount: number, u
 }
 
 export async function returnOrderUdhar(orderId: string, payment: number, userId: string) {
-    const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
-    if (!order) throw new AppError('Order not found', 404)
-    if (order.status === 'cancelled') throw new AppError('Cancelled orders cannot accept payments', 400)
-    if (order.payment === null || order.payment === undefined) throw new AppError("Cannot modify this order's payment", 400)
-    if (order.returnedAt) throw new AppError('Returned orders cannot accept payments', 400)
+    const updated = await db.transaction(async (tx) => {
+        const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+        if (!order) throw new AppError('Order not found', 404)
+        if (order.status === 'cancelled') throw new AppError('Cancelled orders cannot accept payments', 400)
+        if (order.payment === null || order.payment === undefined) throw new AppError("Cannot modify this order's payment", 400)
+        if (order.returnedAt) throw new AppError('Returned orders cannot accept payments', 400)
 
-    const totalPayable = orderPayable(order.price ?? 0, order.discount ?? 0)
-    if ((order.payment ?? 0) >= totalPayable) throw new AppError('This order is already fully paid', 400)
+        const totalPayable = orderPayable(order.price ?? 0, order.discount ?? 0)
+        if ((order.payment ?? 0) >= totalPayable) throw new AppError('This order is already fully paid', 400)
 
-    const [customer] = await db.select().from(customers).where(eq(customers.id, order.customerId)).limit(1)
-    if (!customer) throw new AppError('Customer not found', 404)
+        const [customer] = await tx.select().from(customers).where(eq(customers.id, order.customerId)).limit(1)
+        if (!customer) throw new AppError('Customer not found', 404)
 
-    const remainingAmount = totalPayable - (order.payment ?? 0)
-    if (payment > remainingAmount) throw new AppError('Cannot pay more than the remaining amount', 400)
-    if (payment > customer.udhar) throw new AppError("Cannot pay more than customer's udhar amount", 400)
-    if (payment === 0 && order.payment === 0) throw new AppError('Payment has already been recorded as zero', 400)
+        const remainingAmount = totalPayable - (order.payment ?? 0)
+        if (payment > remainingAmount) throw new AppError('Cannot pay more than the remaining amount', 400)
+        if (payment > customer.udhar) throw new AppError("Cannot pay more than customer's udhar amount", 400)
+        if (payment === 0 && order.payment === 0) throw new AppError('Payment has already been recorded as zero', 400)
 
-    const [txn] = await db
-        .insert(customerTransactions)
-        .values({
-            id: createId(),
-            customerId: customer.id,
-            orderId,
-            type: 'udhar_payment',
-            amount: payment,
-            description: `${customer.name} (${customer.address}) paid from their udhar: ${customer.udhar}`,
-            createdById: userId
-        })
-        .returning()
+        const [txn] = await tx
+            .insert(customerTransactions)
+            .values({
+                id: createId(),
+                customerId: customer.id,
+                orderId,
+                type: 'udhar_payment',
+                amount: payment,
+                description: `${customer.name} (${customer.address}) paid from their udhar: ${customer.udhar}`,
+                createdById: userId
+            })
+            .returning()
 
-    await db
-        .update(customers)
-        .set({ udhar: Math.max(customer.udhar - payment, 0), updatedAt: new Date() })
-        .where(eq(customers.id, customer.id))
+        await adjustCustomerUdhar(tx, customer.id, -payment)
 
-    const [updated] = await db
-        .update(orders)
-        .set({ payment: (order.payment ?? 0) + payment, updatedAt: new Date() })
-        .where(eq(orders.id, orderId))
-        .returning()
+        const [saved] = await tx
+            .update(orders)
+            .set({ payment: (order.payment ?? 0) + payment, updatedAt: new Date() })
+            .where(eq(orders.id, orderId))
+            .returning()
+
+        return { order: saved, txnId: txn.id }
+    })
 
     const { queueTransactionReceiptWhatsApp } = await import('./receipt.service.js')
-    await queueTransactionReceiptWhatsApp(txn.id)
+    await queueTransactionReceiptWhatsApp(updated.txnId)
 
-    return withLegacyId(updated)
+    return withLegacyId(updated.order)
+}
+
+function addDaysToDeliveryDate(value: Date | string | null | undefined, days: number) {
+    const next = new Date(value ?? new Date())
+    next.setDate(next.getDate() + days)
+    next.setUTCHours(0, 0, 0, 0)
+    return next
 }
 
 export async function processDueDeliveries() {
@@ -557,17 +671,56 @@ export async function processDueDeliveries() {
             and(
                 eq(orders.status, 'saved'),
                 eq(orders.orderMode, 'delayed'),
+                eq(orders.deliveryStatus, false),
                 eq(orders.stockDeducted, false),
                 isNull(orders.returnedAt),
                 lte(orders.deliveryDate, today)
             )
         )
+        .orderBy(orders.deliveryDate)
 
     for (const order of dueOrders) {
         try {
-            await deductOrderStock(order.id, order.customerId)
-            await db.update(orders).set({ deliveryStatus: true, updatedAt: new Date() }).where(eq(orders.id, order.id))
-            logger.info('Delayed order delivered and stock deducted', { meta: { orderId: order.id, orderNumber: order.orderNumber } })
+            const result = await db.transaction(async (tx) => {
+                const [fresh] = await tx.select().from(orders).where(eq(orders.id, order.id)).limit(1)
+                if (!fresh) return { action: 'skip' as const }
+                if (fresh.stockDeducted || fresh.deliveryStatus) return { action: 'skip' as const }
+                if (fresh.status !== 'saved' || fresh.orderMode !== 'delayed') return { action: 'skip' as const }
+
+                const items = await getOrderItemsWithProducts(order.id)
+                const stockItems = items.map((i) => ({ productId: i.productId, qty: i.qty }))
+                const check = await canFulfillOrderItems(tx, stockItems)
+
+                if (!check.ok) {
+                    const nextDate = addDaysToDeliveryDate(fresh.deliveryDate, 1)
+                    await tx.update(orders).set({ deliveryDate: nextDate, updatedAt: new Date() }).where(eq(orders.id, order.id))
+                    return { action: 'postponed' as const, check }
+                }
+
+                await deductOrderStockTx(tx, order.id, order.customerId, stockItems)
+                await tx
+                    .update(orders)
+                    .set({ deliveryStatus: true, updatedAt: new Date() })
+                    .where(and(eq(orders.id, order.id), eq(orders.stockDeducted, true)))
+
+                return { action: 'delivered' as const }
+            })
+
+            if (result.action === 'delivered') {
+                logger.info('Delayed order delivered and stock deducted', {
+                    meta: { orderId: order.id, orderNumber: order.orderNumber }
+                })
+            } else if (result.action === 'postponed') {
+                logger.info('Insufficient stock — delivery postponed by 1 day', {
+                    meta: {
+                        orderId: order.id,
+                        orderNumber: order.orderNumber,
+                        productName: result.check.productName,
+                        available: result.check.available,
+                        required: result.check.required
+                    }
+                })
+            }
         } catch (error) {
             logger.error('Failed processing due delivery', { meta: { orderId: order.id, error } })
         }
@@ -618,6 +771,98 @@ export async function processPaymentReminders() {
     if (sent > 0) {
         logger.info('Payment reminders processed', { meta: { sent } })
     }
+}
+
+export async function listUpcomingDeliveries(daysAhead = 14) {
+    const now = startOfToday()
+    const end = new Date(now)
+    end.setDate(end.getDate() + daysAhead)
+    end.setHours(23, 59, 59, 999)
+
+    const rows = await db
+        .select({ order: orders, customer: customers })
+        .from(orders)
+        .innerJoin(customers, eq(orders.customerId, customers.id))
+        .where(
+            and(
+                eq(orders.status, 'saved'),
+                eq(orders.orderMode, 'delayed'),
+                eq(orders.deliveryStatus, false),
+                isNull(orders.returnedAt),
+                lte(orders.deliveryDate, end)
+            )
+        )
+        .orderBy(orders.deliveryDate)
+
+    return Promise.all(
+        rows.map(async ({ order, customer }) => {
+            const items = await getOrderItemsWithProducts(order.id)
+            return {
+                ...mapOrderWithCart(order, items),
+                customerDetails: { id: customer.id, name: customer.name, contact: customer.contact }
+            }
+        })
+    )
+}
+
+export async function postponeOrderDelivery(orderId: string, deliveryDate: string) {
+    const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+    if (!order) throw new AppError('Order not found', 404)
+    if (order.status !== 'saved') throw new AppError('Only saved orders can be rescheduled', 400)
+    if (order.orderMode !== 'delayed') throw new AppError('Only delayed orders can be rescheduled', 400)
+    if (order.deliveryStatus) throw new AppError('Delivered orders cannot be rescheduled', 400)
+    if (order.returnedAt) throw new AppError('Returned orders cannot be rescheduled', 400)
+
+    const nextDate = new Date(deliveryDate)
+    if (Number.isNaN(nextDate.getTime())) throw new AppError('Invalid delivery date', 400)
+    nextDate.setUTCHours(0, 0, 0, 0)
+
+    const today = startOfToday()
+    if (nextDate < today) throw new AppError('Delivery date cannot be in the past', 400)
+
+    const [updated] = await db.update(orders).set({ deliveryDate: nextDate, updatedAt: new Date() }).where(eq(orders.id, orderId)).returning()
+
+    const items = await getOrderItemsWithProducts(orderId)
+    return mapOrderWithCart(updated, items)
+}
+
+export async function getStockVsPendingDelayed() {
+    const pendingOrders = await db
+        .select()
+        .from(orders)
+        .where(
+            and(
+                eq(orders.status, 'saved'),
+                eq(orders.orderMode, 'delayed'),
+                eq(orders.deliveryStatus, false),
+                eq(orders.stockDeducted, false),
+                isNull(orders.returnedAt)
+            )
+        )
+
+    const demandByProduct = new Map<string, number>()
+    for (const order of pendingOrders) {
+        const items = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id))
+        for (const item of items) {
+            demandByProduct.set(item.productId, (demandByProduct.get(item.productId) ?? 0) + item.qty)
+        }
+    }
+
+    const allProducts = await db.select().from(products)
+    return allProducts
+        .filter((p) => p.stockQty > 0 || demandByProduct.has(p.id))
+        .map((p) => {
+            const pendingQty = demandByProduct.get(p.id) ?? 0
+            return {
+                productId: p.id,
+                name: p.name,
+                category: p.category,
+                currentStock: p.stockQty,
+                pendingQty,
+                surplus: p.stockQty - pendingQty
+            }
+        })
+        .sort((a, b) => a.surplus - b.surplus)
 }
 
 export function runScheduler() {

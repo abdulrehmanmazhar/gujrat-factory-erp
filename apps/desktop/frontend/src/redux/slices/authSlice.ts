@@ -32,13 +32,19 @@ const authSlice = createSlice({
             state.user = action.payload.user
             state.loggedIn = true
             state.token = action.payload.accessToken ?? null
-            localStorage.setItem(USER_KEY, JSON.stringify(action.payload.user))
+            // localStorage.setItem(USER_KEY, JSON.stringify(action.payload.user))
+            window.platform.storage.setData(USER_KEY, JSON.stringify(action.payload.user)).catch((err) => {
+                console.error('Failed to save user data to Neutralino storage:', err)
+            })
         },
         logout: (state) => {
             state.user = null
             state.loggedIn = false
             state.token = null
-            localStorage.removeItem(USER_KEY)
+            // localStorage.removeItem(USER_KEY)
+            window.platform.storage.removeData(USER_KEY).catch((err) => {
+                console.error('Failed to remove user data from Neutralino storage:', err)
+            })
         }
     }
 })
