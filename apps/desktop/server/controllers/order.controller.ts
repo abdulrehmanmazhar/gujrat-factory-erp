@@ -42,6 +42,11 @@ export const cancelOrder = CatchAsyncError(async (req: Request, res: Response) =
     httpResponse(req, res, 200, 'Order cancelled successfully', { order })
 })
 
+export const deleteOrder = CatchAsyncError(async (req: Request, res: Response) => {
+    const result = await orderService.deleteOrderPermanently(param(req.params.id))
+    httpResponse(req, res, 200, result.message, null)
+})
+
 export const getOrder = CatchAsyncError(async (req: Request, res: Response) => {
     const order = await orderService.getOrder(param(req.params.id))
     httpResponse(req, res, 200, 'Order fetched successfully', { order })

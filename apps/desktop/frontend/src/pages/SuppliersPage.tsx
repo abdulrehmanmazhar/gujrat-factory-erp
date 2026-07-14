@@ -9,17 +9,14 @@ import { SearchInput } from '@/components/shared/SearchInput'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useDeactivateSupplierMutation, useGetSuppliersQuery } from '@/redux/api/suppliersApi'
-import { selectCurrentUser } from '@/redux/slices/authSlice'
 import type { Supplier } from '@/types/api'
 import { Package, Plus, ShoppingCart } from 'lucide-react'
-import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
 import { getApiErrorMessage } from '@/lib/errors'
-import { isAdminOrAbove } from '@/lib/roles'
+import { usePermissions } from '@/hooks/usePermissions'
 
 export default function SuppliersPage() {
-    const user = useSelector(selectCurrentUser)
-    const isAdmin = isAdminOrAbove(user?.role)
+    const { canWrite, canDelete } = usePermissions()
     const { data, isLoading, refetch } = useGetSuppliersQuery(true)
     const [deactivateSupplier, { isLoading: deactivating }] = useDeactivateSupplierMutation()
     const [search, setSearch] = useState('')
@@ -42,7 +39,7 @@ export default function SuppliersPage() {
                 title="Suppliers"
                 description="Manage suppliers, link products, and create restock purchase orders"
                 actions={
-                    isAdmin ? (
+                    canWrite ? (
                         <Button
                             onClick={() => {
                                 setEditSupplier(null)
@@ -80,7 +77,7 @@ export default function SuppliersPage() {
                 ]}
                 rows={filtered as unknown as Record<string, unknown>[]}
                 renderActions={
-                    isAdmin
+                    canWrite
                         ? (row) => {
                               const supplier = row as unknown as Supplier
                               return (
@@ -108,7 +105,9 @@ export default function SuppliersPage() {
                                           setFormOpen(true)
                                       }}
                                       deleteLabel="Deactivate"
-                                      onDelete={supplier.isActive ? () => setDeactivateId(String(supplier.id ?? supplier._id)) : undefined}
+                                      onDelete={
+                                          canDelete && supplier.isActive ? () => setDeactivateId(String(supplier.id ?? supplier._id)) : undefined
+                                      }
                                   />
                               )
                           }

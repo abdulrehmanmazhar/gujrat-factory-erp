@@ -6,6 +6,7 @@ import { DataTable } from '@/components/shared/DataTable'
 import { PageHeader, RowActions } from '@/components/shared/PageHeader'
 import { PaginationControls, paginate, totalPages } from '@/components/shared/PaginationControls'
 import { SearchInput } from '@/components/shared/SearchInput'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useDeleteProductMutation, useGetProductsQuery } from '@/redux/api/productsApi'
 import type { Product } from '@/types/api'
 import { Plus } from 'lucide-react'
@@ -13,6 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 
 export default function InventoryPage() {
+    const { canWrite, canDelete } = usePermissions()
     const { data, isLoading, refetch } = useGetProductsQuery()
     const [deleteProduct, { isLoading: deleting }] = useDeleteProductMutation()
     const [search, setSearch] = useState('')
@@ -39,13 +41,15 @@ export default function InventoryPage() {
                 title="Inventory"
                 description="Manage products, stock levels, and restocking"
                 actions={
-                    <Button
-                        onClick={() => {
-                            setEditProduct(null)
-                            setFormOpen(true)
-                        }}>
-                        <Plus className="size-4" /> Add Product
-                    </Button>
+                    canWrite ? (
+                        <Button
+                            onClick={() => {
+                                setEditProduct(null)
+                                setFormOpen(true)
+                            }}>
+                            <Plus className="size-4" /> Add Product
+                        </Button>
+                    ) : undefined
                 }
             />
 
@@ -77,26 +81,36 @@ export default function InventoryPage() {
                     }
                 ]}
                 rows={rows as unknown as Record<string, unknown>[]}
-                renderActions={(row) => (
-                    <RowActions
-                        extra={
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                    setRestockProduct(row as unknown as Product)
-                                    setRestockOpen(true)
-                                }}>
-                                Restock
-                            </Button>
-                        }
-                        onEdit={() => {
-                            setEditProduct(row as unknown as Product)
-                            setFormOpen(true)
-                        }}
-                        onDelete={() => setDeleteId(String(row.id ?? row._id))}
-                    />
-                )}
+                renderActions={
+                    canWrite || canDelete
+                        ? (row) => (
+                              <RowActions
+                                  extra={
+                                      canWrite ? (
+                                          <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() => {
+                                                  setRestockProduct(row as unknown as Product)
+                                                  setRestockOpen(true)
+                                              }}>
+                                              Restock
+                                          </Button>
+                                      ) : undefined
+                                  }
+                                  onEdit={
+                                      canWrite
+                                          ? () => {
+                                                setEditProduct(row as unknown as Product)
+                                                setFormOpen(true)
+                                            }
+                                          : undefined
+                                  }
+                                  onDelete={canDelete ? () => setDeleteId(String(row.id ?? row._id)) : undefined}
+                              />
+                          )
+                        : undefined
+                }
             />
 
             <ProductFormDialog

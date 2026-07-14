@@ -63,6 +63,10 @@ export const restockApi = apiSlice.injectEndpoints({
             query: (id) => ({ url: `/restock-orders/${id}/cancel`, method: 'POST' }),
             invalidatesTags: [...RESTOCK_MUTATION_TAGS]
         }),
+        deleteRestockOrder: builder.mutation<ApiEnvelope<null>, string>({
+            query: (id) => ({ url: `/restock-orders/${id}`, method: 'DELETE' }),
+            invalidatesTags: ['RestockOrders']
+        }),
         recordRestockPayment: builder.mutation<ApiEnvelope<{ order: RestockOrder }>, { id: string; amount: number; notes?: string }>({
             query: ({ id, amount, notes }) => ({
                 url: `/restock-orders/${id}/payments`,
@@ -93,6 +97,7 @@ export const {
     useMarkRestockOrderedMutation,
     useReceiveRestockOrderMutation,
     useCancelRestockOrderMutation,
+    useDeleteRestockOrderMutation,
     useRecordRestockPaymentMutation,
     useRecordRestockRefundMutation
 } = restockApi

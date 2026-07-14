@@ -17,6 +17,18 @@ export function isAdminOrAbove(role?: string | null) {
     return normalized === ROLES.ADMIN || normalized === ROLES.SUPER_ADMIN
 }
 
+export function canWrite(role?: string | null) {
+    return isAdminOrAbove(role)
+}
+
+export function canDelete(role?: string | null) {
+    return isSuperAdmin(role)
+}
+
+export function isReadOnlyUser(role?: string | null) {
+    return normalizeRole(role) === ROLES.USER.toLowerCase()
+}
+
 export function roleCanAccess(required: string, userRole?: string | null) {
     const allowed = required.toLowerCase()
     const normalized = normalizeRole(userRole)

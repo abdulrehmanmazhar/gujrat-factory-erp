@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { CancelOrderDialog, OrderDetailDialog, PaymentDialog, RefundOrderDialog, ReturnOrderDialog } from '@/components/orders/OrderDetailDialog'
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { DataTable } from '@/components/shared/DataTable'
 import { PageHeader, RowActions } from '@/components/shared/PageHeader'
 import { PaginationControls, paginate, totalPages } from '@/components/shared/PaginationControls'
@@ -8,7 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { downloadBlob } from '@/lib/download'
 import { getApiErrorMessage } from '@/lib/errors'
-import { useGenerateInvoicesMutation, useGetOrdersQuery } from '@/redux/api/ordersApi'
+import { usePermissions } from '@/hooks/usePermissions'
+import { useGenerateInvoicesMutation, useDeleteOrderMutation, useGetOrdersQuery } from '@/redux/api/ordersApi'
 import type { Order } from '@/types/api'
 import { FileDown } from 'lucide-react'
 import { toast } from 'sonner'
@@ -38,8 +40,10 @@ function orderStatusVariant(order: Order): 'default' | 'secondary' | 'destructiv
 }
 
 export default function OrdersPage() {
+    const { canWrite, canDelete } = usePermissions()
     const { data, isLoading } = useGetOrdersQuery()
     const [generateInvoices, { isLoading: generating }] = useGenerateInvoicesMutation()
+    const [deleteOrder, { isLoading: deleting }] = useDeleteOrderMutation()
     const [search, setSearch] = useState('')
     const [page, setPage] = useState(1)
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -48,6 +52,7 @@ export default function OrdersPage() {
     const [refundOrder, setRefundOrder] = useState<Order | null>(null)
     const [returnOrder, setReturnOrder] = useState<Order | null>(null)
     const [cancelOrder, setCancelOrder] = useState<Order | null>(null)
+    const [deleteOrderTarget, setDeleteOrderTarget] = useState<Order | null>(null)
     const perPage = 10
 
     const filtered = useMemo(() => {
@@ -98,18 +103,31 @@ export default function OrdersPage() {
         }
     }
 
+    const handleDeleteOrder = async () => {
+        if (!deleteOrderTarget) return
+        try {
+            await deleteOrder(deleteOrderTarget.id ?? deleteOrderTarget._id).unwrap()
+            toast.success('Order deleted permanently')
+            setDeleteOrderTarget(null)
+        } catch (err) {
+            toast.error(getApiErrorMessage(err, 'Failed to delete order'))
+        }
+    }
+
     return (
         <div>
             <PageHeader
                 title="Orders"
                 description="View and manage customer orders, payments, and refunds"
                 actions={
-                    <Button
-                        onClick={handleGenerateInvoices}
-                        disabled={generating || selectedIds.size === 0}>
-                        <FileDown className="size-4" />
-                        {generating ? 'Generating...' : `Generate Invoices (${selectedIds.size})`}
-                    </Button>
+                    canWrite ? (
+                        <Button
+                            onClick={handleGenerateInvoices}
+                            disabled={generating || selectedIds.size === 0}>
+                            <FileDown className="size-4" />
+                            {generating ? 'Generating...' : `Generate Invoices (${selectedIds.size})`}
+                        </Button>
+                    ) : undefined
                 }
             />
 
@@ -129,7 +147,7 @@ export default function OrdersPage() {
 
             <DataTable
                 loading={isLoading}
-                selectable
+                selectable={canWrite}
                 selectedIds={selectedIds}
                 onToggleRow={toggleRow}
                 onToggleAll={toggleAllOnPage}
@@ -173,10 +191,10 @@ export default function OrdersPage() {
                     const isReturned = !!order.returnedAt || order.status === 'returned'
                     const outstanding = orderOutstanding(order)
                     const refundable = orderRefundable(order)
-                    const canPay = !isCancelled && !isReturned && outstanding > 0
-                    const canRefund = !isCancelled && refundable > 0
-                    const canReturn = !!order.deliveryStatus && !isReturned && !isCancelled
-                    const canCancel = !order.deliveryStatus && !isReturned && !isCancelled
+                    const canPay = canWrite && !isCancelled && !isReturned && outstanding > 0
+                    const canRefund = canWrite && !isCancelled && refundable > 0
+                    const canReturn = canWrite && !!order.deliveryStatus && !isReturned && !isCancelled
+                    const canCancel = canWrite && !order.deliveryStatus && !isReturned && !isCancelled
 
                     return (
                         <RowActions
@@ -210,6 +228,15 @@ export default function OrdersPage() {
                                             size="sm"
                                             onClick={() => setReturnOrder(order)}>
                                             Return
+                                        </Button>
+                                    ) : null}
+                                    {canDelete ? (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-destructive"
+                                            onClick={() => setDeleteOrderTarget(order)}>
+                                            Delete
                                         </Button>
                                     ) : null}
                                 </>
@@ -249,6 +276,14 @@ export default function OrdersPage() {
                 onOpenChange={() => setCancelOrder(null)}
                 order={cancelOrder}
                 onSuccess={() => setCancelOrder(null)}
+            />
+            <ConfirmDialog
+                open={!!deleteOrderTarget}
+                onOpenChange={() => setDeleteOrderTarget(null)}
+                title="Delete order permanently?"
+                description="This removes the order record only. Stock levels, customer udhar, and existing transactions will not be changed."
+                onConfirm={handleDeleteOrder}
+                loading={deleting}
             />
         </div>
     )

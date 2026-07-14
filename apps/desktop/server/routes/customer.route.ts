@@ -1,13 +1,13 @@
 import express from 'express'
-import { authorizeRoles, isAuthenticated } from '../middleware/auth.js'
+import { authorizeDelete, authorizeWrite, isAuthenticated } from '../middleware/auth.js'
 import { addCustomer, deleteCustomer, editCustomer, getCustomer, getCustomerById, returnUdhar } from '../controllers/customer.controller.js'
 const router = express.Router()
 
-router.post('/add-customer', isAuthenticated, addCustomer)
-router.put('/edit-customer/:id', isAuthenticated, editCustomer)
+router.post('/add-customer', isAuthenticated, authorizeWrite, addCustomer)
+router.put('/edit-customer/:id', isAuthenticated, authorizeWrite, editCustomer)
 router.get('/get-customers', isAuthenticated, getCustomer)
 router.get('/get-customer/:id', isAuthenticated, getCustomerById)
-router.delete('/delete-customer/:id', isAuthenticated, authorizeRoles('admin'), deleteCustomer)
-router.put(`/returnUdhar/:id`, isAuthenticated, returnUdhar)
+router.delete('/delete-customer/:id', isAuthenticated, authorizeDelete, deleteCustomer)
+router.put(`/returnUdhar/:id`, isAuthenticated, authorizeWrite, returnUdhar)
 
 export default router

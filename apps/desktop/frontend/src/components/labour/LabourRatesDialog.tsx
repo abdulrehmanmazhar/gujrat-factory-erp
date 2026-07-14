@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { getApiErrorMessage } from '@/lib/errors'
 import { useGetProductsQuery } from '@/redux/api/productsApi'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useRemoveLabourRateMutation, useSetLabourRateMutation } from '@/redux/api/labourApi'
 import type { Labourer } from '@/types/api'
 import { Trash2 } from 'lucide-react'
@@ -24,6 +25,7 @@ export function LabourRatesDialog({
     onSuccess: () => void
 }) {
     const { data: productsData } = useGetProductsQuery()
+    const { canWrite, canDelete } = usePermissions()
     const [setRate, { isLoading: saving }] = useSetLabourRateMutation()
     const [removeRate, { isLoading: removing }] = useRemoveLabourRateMutation()
     const [productId, setProductId] = useState('')
@@ -95,13 +97,15 @@ export function LabourRatesDialog({
                                     <TableCell>{r.product?.name ?? r.productId}</TableCell>
                                     <TableCell>{r.ratePerUnit}</TableCell>
                                     <TableCell>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            disabled={removing}
-                                            onClick={() => handleRemove(r.productId)}>
-                                            <Trash2 className="size-4 text-destructive" />
-                                        </Button>
+                                        {canDelete ? (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                disabled={removing}
+                                                onClick={() => handleRemove(r.productId)}>
+                                                <Trash2 className="size-4 text-destructive" />
+                                            </Button>
+                                        ) : null}
                                     </TableCell>
                                 </TableRow>
                             ))}
@@ -111,42 +115,44 @@ export function LabourRatesDialog({
                     <p className="text-sm text-muted-foreground">No rates defined yet.</p>
                 )}
 
-                <form
-                    onSubmit={handleAdd}
-                    className="space-y-3 rounded-lg border p-3">
-                    <Label>Add rate</Label>
-                    <Select
-                        value={productId}
-                        onValueChange={setProductId}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Product" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {products
-                                .filter((p) => !ratedIds.has(p.id ?? p._id))
-                                .map((p) => (
-                                    <SelectItem
-                                        key={p.id ?? p._id}
-                                        value={p.id ?? p._id}>
-                                        {p.name}
-                                    </SelectItem>
-                                ))}
-                        </SelectContent>
-                    </Select>
-                    <Input
-                        type="number"
-                        min={0}
-                        placeholder="Rate per unit (PKR)"
-                        value={ratePerUnit}
-                        onChange={(e) => setRatePerUnit(e.target.value)}
-                    />
-                    <Button
-                        type="submit"
-                        size="sm"
-                        disabled={saving}>
-                        Save rate
-                    </Button>
-                </form>
+                {canWrite ? (
+                    <form
+                        onSubmit={handleAdd}
+                        className="space-y-3 rounded-lg border p-3">
+                        <Label>Add rate</Label>
+                        <Select
+                            value={productId}
+                            onValueChange={setProductId}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Product" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {products
+                                    .filter((p) => !ratedIds.has(p.id ?? p._id))
+                                    .map((p) => (
+                                        <SelectItem
+                                            key={p.id ?? p._id}
+                                            value={p.id ?? p._id}>
+                                            {p.name}
+                                        </SelectItem>
+                                    ))}
+                            </SelectContent>
+                        </Select>
+                        <Input
+                            type="number"
+                            min={0}
+                            placeholder="Rate per unit (PKR)"
+                            value={ratePerUnit}
+                            onChange={(e) => setRatePerUnit(e.target.value)}
+                        />
+                        <Button
+                            type="submit"
+                            size="sm"
+                            disabled={saving}>
+                            Save rate
+                        </Button>
+                    </form>
+                ) : null}
             </DialogContent>
         </Dialog>
     )

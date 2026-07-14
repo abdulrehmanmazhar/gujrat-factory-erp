@@ -11,8 +11,10 @@ import { useTheme } from '@/hooks/useTheme'
 import { useLanguage } from '@/hooks/useLanguage'
 import constants from '@/constants/app'
 import { getApiErrorMessage } from '@/lib/errors'
+import { usePermissions } from '@/hooks/usePermissions'
 import { isSuperAdmin } from '@/lib/roles'
 import type { AppLanguage } from '@/lib/i18n-storage'
+import { restartAppForPendingRestore } from '@/lib/server'
 import { downloadBackupFile, useRestoreBackupMutation } from '@/redux/api/backupApi'
 import { selectCurrentUser, selectAuthToken } from '@/redux/slices/authSlice'
 import { Link } from 'react-router-dom'
@@ -32,6 +34,7 @@ export default function SettingsPage() {
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const canManageBackup = isSuperAdmin(user?.role)
+    const { canWrite } = usePermissions()
 
     const languageOptions: { value: AppLanguage; label: string }[] = [
         { value: 'en', label: t.settings.english },
@@ -92,6 +95,12 @@ export default function SettingsPage() {
                 description: result.requiresRestart ? t.settings.backupStagedDesc : undefined,
                 duration: 8000
             })
+
+            if (result.requiresRestart) {
+                window.setTimeout(() => {
+                    void restartAppForPendingRestore()
+                }, 1200)
+            }
         } catch (err) {
             toast.error(getApiErrorMessage(err, t.settings.restoreFailed))
         }
@@ -142,7 +151,7 @@ export default function SettingsPage() {
                         </div>
                         <Select
                             value={documentLanguage}
-                            disabled={savingLanguage}
+                            disabled={!canWrite || savingLanguage}
                             onValueChange={(value) => handleDocumentLanguageChange(value as AppLanguage)}>
                             <SelectTrigger className="w-full sm:w-48">
                                 <SelectValue />

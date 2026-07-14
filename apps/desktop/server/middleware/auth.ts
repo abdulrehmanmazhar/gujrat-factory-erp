@@ -41,3 +41,9 @@ export const authorizeRoles = (...roles: string[]) => {
         next()
     }
 }
+
+/** Admin and super admin — create/update operational data */
+export const authorizeWrite = authorizeRoles('admin')
+
+/** Super admin only — permanent deletes */
+export const authorizeDelete = authorizeRoles('super_admin')

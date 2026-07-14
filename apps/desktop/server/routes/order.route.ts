@@ -1,5 +1,5 @@
 import express from 'express'
-import { authorizeRoles, isAuthenticated } from '../middleware/auth.js'
+import { authorizeDelete, authorizeWrite, isAuthenticated } from '../middleware/auth.js'
 import {
     addOrder,
     addOrderPayment,
@@ -7,6 +7,7 @@ import {
     createCart,
     createOrder,
     deleteCart,
+    deleteOrder,
     generateInvoices,
     getAllOrders,
     getOrder,
@@ -16,17 +17,17 @@ import {
 } from '../controllers/order.controller.js'
 const router = express.Router()
 
-router.post('/fill-cart/:id', isAuthenticated, createCart)
-router.post('/create-order/:id', isAuthenticated, createOrder)
-// router.put("/edit-cart/:id/:index",isAuthenticated,  editCart);
-router.delete('/delete-cart/:id/:index', isAuthenticated, deleteCart)
-router.post('/add-order/:id', isAuthenticated, addOrder)
-router.post('/add-order-payment/:id', isAuthenticated, addOrderPayment)
-router.post('/add-order-refund/:id', isAuthenticated, recordOrderRefund)
-router.post('/return-order/:id', isAuthenticated, returnOrder)
-router.post('/return-order-udhar/:id', isAuthenticated, returnOrderUdhar)
-router.post('/generate-invoices', isAuthenticated, generateInvoices)
-router.post('/cancel-order/:id', isAuthenticated, authorizeRoles('admin'), cancelOrder)
+router.post('/fill-cart/:id', isAuthenticated, authorizeWrite, createCart)
+router.post('/create-order/:id', isAuthenticated, authorizeWrite, createOrder)
+router.delete('/delete-cart/:id/:index', isAuthenticated, authorizeWrite, deleteCart)
+router.post('/add-order/:id', isAuthenticated, authorizeWrite, addOrder)
+router.post('/add-order-payment/:id', isAuthenticated, authorizeWrite, addOrderPayment)
+router.post('/add-order-refund/:id', isAuthenticated, authorizeWrite, recordOrderRefund)
+router.post('/return-order/:id', isAuthenticated, authorizeWrite, returnOrder)
+router.post('/return-order-udhar/:id', isAuthenticated, authorizeWrite, returnOrderUdhar)
+router.post('/generate-invoices', isAuthenticated, authorizeWrite, generateInvoices)
+router.post('/cancel-order/:id', isAuthenticated, authorizeWrite, cancelOrder)
+router.delete('/delete-order/:id', isAuthenticated, authorizeDelete, deleteOrder)
 router.get('/get-order/:id', isAuthenticated, getOrder)
 router.get('/get-orders', isAuthenticated, getAllOrders)
 

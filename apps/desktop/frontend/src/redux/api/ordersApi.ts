@@ -24,6 +24,13 @@ export const ordersApi = apiSlice.injectEndpoints({
             }),
             invalidatesTags: [...ORDER_MUTATION_TAGS]
         }),
+        deleteOrder: builder.mutation<ApiEnvelope<null>, string>({
+            query: (id) => ({
+                url: `/delete-order/${id}`,
+                method: 'DELETE'
+            }),
+            invalidatesTags: ['Orders']
+        }),
         addOrderPayment: builder.mutation<ApiEnvelope<{ order: Order }>, { id: string; payment: number }>({
             query: ({ id, payment }) => ({
                 url: `/add-order-payment/${id}`,
@@ -112,6 +119,7 @@ export const {
     useGetOrdersQuery,
     useGetOrderQuery,
     useCancelOrderMutation,
+    useDeleteOrderMutation,
     useAddOrderPaymentMutation,
     useReturnOrderUdharMutation,
     useReturnOrderMutation,

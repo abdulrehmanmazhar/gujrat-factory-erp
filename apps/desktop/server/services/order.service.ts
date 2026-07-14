@@ -17,7 +17,7 @@ import { adjustProductStockTx, canFulfillOrderItems, deductOrderStockTx, restore
 type CartInput = { productId: string; qty: number }[]
 type OrderMode = 'pos' | 'delayed'
 
-const SCHEDULER_INTERVAL_MS = Number(process.env.SCHEDULER_INTERVAL_MS || 5 * 60 * 1000)
+const SCHEDULER_INTERVAL_MS = Number(process.env.SCHEDULER_INTERVAL_MS || 1 * 60 * 1000)
 
 function startOfToday() {
     const today = new Date()
@@ -419,6 +419,19 @@ export async function addOrder(orderId: string, deliveryDate: string, message = 
 
     await finalizeOrder(orderId, order.customerId, deliveryDate, message, additionalDiscount, 'delayed')
     return { message: 'Order saved successfully' }
+}
+
+/** Super-admin purge: removes order rows only — does not adjust stock, udhar, or transactions. */
+export async function deleteOrderPermanently(orderId: string) {
+    const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+    if (!order) throw new AppError('Order not found', 404)
+
+    await db.transaction(async (tx) => {
+        await tx.delete(orderItems).where(eq(orderItems.orderId, orderId))
+        await tx.delete(orders).where(eq(orders.id, orderId))
+    })
+
+    return { message: 'Order deleted permanently' }
 }
 
 export async function cancelOrder(orderId: string, refundAmount: number, userId: string) {

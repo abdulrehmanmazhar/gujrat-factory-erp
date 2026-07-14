@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/sidebar'
 import constants from '@/constants/app'
 import { useLanguage } from '@/hooks/useLanguage'
-import { isAdminOrAbove, isSuperAdmin } from '@/lib/roles'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useLogoutMutation } from '@/redux/api/authApi'
 import { selectCurrentUser } from '@/redux/slices/authSlice'
 import {
@@ -47,8 +47,8 @@ import { useTheme } from '@/hooks/useTheme'
 const navItems = [
     { to: '/', labelKey: 'home' as const, icon: BarChart3 },
     { to: '/dashboard', labelKey: 'dashboard' as const, icon: Target },
-    { to: '/pos', labelKey: 'pos' as const, icon: ShoppingBag },
-    { to: '/delayed-orders', labelKey: 'delayedOrders' as const, icon: CalendarClock },
+    { to: '/pos', labelKey: 'pos' as const, icon: ShoppingBag, writeOnly: true },
+    { to: '/delayed-orders', labelKey: 'delayedOrders' as const, icon: CalendarClock, writeOnly: true },
     { to: '/orders', labelKey: 'orders' as const, icon: ShoppingCart },
     { to: '/whatsapp', labelKey: 'whatsapp' as const, icon: MessageCircle },
     { to: '/inventory', labelKey: 'inventory' as const, icon: Package },
@@ -66,6 +66,7 @@ const navItems = [
 export function AppLayout() {
     useGetMeQuery()
     const { t } = useLanguage()
+    const { canWrite, isSuperAdmin } = usePermissions()
     const user = useSelector(selectCurrentUser)
     const [logout] = useLogoutMutation()
     const navigate = useNavigate()
@@ -97,8 +98,9 @@ export function AppLayout() {
                             <SidebarMenu>
                                 {navItems
                                     .filter((item) => {
-                                        if (item.superAdminOnly && !isSuperAdmin(user?.role)) return false
-                                        if (item.adminOnly && !isAdminOrAbove(user?.role)) return false
+                                        if (item.superAdminOnly && !isSuperAdmin) return false
+                                        if (item.adminOnly && !canWrite) return false
+                                        if (item.writeOnly && !canWrite) return false
                                         return true
                                     })
                                     .map((item) => (

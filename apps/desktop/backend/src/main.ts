@@ -2,9 +2,7 @@ import * as Neutralino from '@neutralinojs/lib'
 
 Neutralino.init()
 
-Neutralino.events.on('windowClose', () => {
-    Neutralino.app.exit()
-})
+// Window close is handled by the React shell (stops the API server before exit).
 
 window.platform = Neutralino
 

@@ -5,12 +5,10 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useWhatsAppSocket } from '@/hooks/useWhatsAppSocket'
-import { isAdminOrAbove } from '@/lib/roles'
+import { usePermissions } from '@/hooks/usePermissions'
 import { getApiErrorMessage } from '@/lib/errors'
 import { useGetWhatsAppStatusQuery, useLogoutWhatsAppMutation } from '@/redux/api/whatsappApi'
-import { selectCurrentUser } from '@/redux/slices/authSlice'
 import { Loader2, LogOut, MessageCircle, RefreshCw } from 'lucide-react'
-import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
 
 function statusLabel(connected: boolean, socketReady: boolean, qrCode: string) {
@@ -28,13 +26,12 @@ function queueStatusBadge(status: string) {
 }
 
 export default function WhatsAppPage() {
-    const user = useSelector(selectCurrentUser)
     const { qrCode, connected, socketReady, socketError, queueStats } = useWhatsAppSocket()
     const { data: apiStatus, refetch, isFetching } = useGetWhatsAppStatusQuery()
     const [logoutWhatsApp, { isLoading: loggingOut }] = useLogoutWhatsAppMutation()
 
     const stats = queueStats ?? (apiStatus ? { counts: apiStatus.counts, recent: apiStatus.recent } : null)
-    const canLogout = isAdminOrAbove(user?.role)
+    const { canWrite } = usePermissions()
 
     const handleLogout = async () => {
         try {
@@ -61,7 +58,7 @@ export default function WhatsAppPage() {
                             <RefreshCw className={`size-4 ${isFetching ? 'animate-spin' : ''}`} />
                             Refresh
                         </Button>
-                        {canLogout && connected ? (
+                        {canWrite && connected ? (
                             <Button
                                 variant="destructive"
                                 size="sm"
@@ -97,7 +94,7 @@ export default function WhatsAppPage() {
                                 <p className="text-sm text-muted-foreground">
                                     WhatsApp is connected. Invoices and receipts are sent through the persistent queue.
                                 </p>
-                                {canLogout ? (
+                                {canWrite ? (
                                     <p className="text-xs text-muted-foreground">Use Log out above to unlink this device and show a new QR code.</p>
                                 ) : null}
                             </div>

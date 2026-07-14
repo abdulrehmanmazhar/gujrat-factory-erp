@@ -6,17 +6,14 @@ import { PageHeader, RowActions } from '@/components/shared/PageHeader'
 import { SearchInput } from '@/components/shared/SearchInput'
 import { Button } from '@/components/ui/button'
 import { getApiErrorMessage } from '@/lib/errors'
-import { isAdminOrAbove } from '@/lib/roles'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useDeleteRecipeMutation, useGetRecipesQuery } from '@/redux/api/recipesApi'
-import { selectCurrentUser } from '@/redux/slices/authSlice'
 import type { Recipe } from '@/types/api'
 import { Plus } from 'lucide-react'
-import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
 
 export default function RecipesPage() {
-    const user = useSelector(selectCurrentUser)
-    const isAdmin = isAdminOrAbove(user?.role)
+    const { canWrite, canDelete } = usePermissions()
     const { data, isLoading, refetch } = useGetRecipesQuery()
     const [deleteRecipe, { isLoading: deleting }] = useDeleteRecipeMutation()
     const [search, setSearch] = useState('')
@@ -36,7 +33,7 @@ export default function RecipesPage() {
                 title="Recipes"
                 description="Define how much of each inventory item is consumed to produce another product"
                 actions={
-                    isAdmin ? (
+                    canWrite ? (
                         <Button
                             onClick={() => {
                                 setEditRecipe(null)
@@ -76,14 +73,18 @@ export default function RecipesPage() {
                 ]}
                 rows={filtered as unknown as Record<string, unknown>[]}
                 renderActions={
-                    isAdmin
+                    canWrite || canDelete
                         ? (row) => (
                               <RowActions
-                                  onEdit={() => {
-                                      setEditRecipe(row as unknown as Recipe)
-                                      setFormOpen(true)
-                                  }}
-                                  onDelete={() => setDeleteId(String(row.id ?? row._id))}
+                                  onEdit={
+                                      canWrite
+                                          ? () => {
+                                                setEditRecipe(row as unknown as Recipe)
+                                                setFormOpen(true)
+                                            }
+                                          : undefined
+                                  }
+                                  onDelete={canDelete ? () => setDeleteId(String(row.id ?? row._id)) : undefined}
                               />
                           )
                         : undefined

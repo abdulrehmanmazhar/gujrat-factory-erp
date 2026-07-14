@@ -1,3 +1,4 @@
+import { RequireSuperAdmin, RequireWrite } from '@/components/auth/RequireRole'
 import { AppLayout } from '@/components/layout/AppLayout'
 import CommunityPage from '@/pages/CommunityPage'
 import CustomersPage from '@/pages/CustomersPage'
@@ -36,11 +37,19 @@ export default function Router() {
                 />
                 <Route
                     path="pos"
-                    element={<PosPage />}
+                    element={
+                        <RequireWrite>
+                            <PosPage />
+                        </RequireWrite>
+                    }
                 />
                 <Route
                     path="delayed-orders"
-                    element={<DelayedOrderPage />}
+                    element={
+                        <RequireWrite>
+                            <DelayedOrderPage />
+                        </RequireWrite>
+                    }
                 />
                 <Route
                     path="whatsapp"
@@ -56,23 +65,43 @@ export default function Router() {
                 />
                 <Route
                     path="suppliers"
-                    element={<SuppliersPage />}
+                    element={
+                        <RequireWrite>
+                            <SuppliersPage />
+                        </RequireWrite>
+                    }
                 />
                 <Route
                     path="restock-orders"
-                    element={<RestockOrdersPage />}
+                    element={
+                        <RequireWrite>
+                            <RestockOrdersPage />
+                        </RequireWrite>
+                    }
                 />
                 <Route
                     path="recipes"
-                    element={<RecipesPage />}
+                    element={
+                        <RequireWrite>
+                            <RecipesPage />
+                        </RequireWrite>
+                    }
                 />
                 <Route
                     path="labour"
-                    element={<LabourPage />}
+                    element={
+                        <RequireWrite>
+                            <LabourPage />
+                        </RequireWrite>
+                    }
                 />
                 <Route
                     path="community"
-                    element={<CommunityPage />}
+                    element={
+                        <RequireSuperAdmin>
+                            <CommunityPage />
+                        </RequireSuperAdmin>
+                    }
                 />
                 <Route
                     path="profile"

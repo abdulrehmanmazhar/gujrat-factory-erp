@@ -11,6 +11,7 @@ import {
     restockOutstanding,
     statusVariant
 } from '@/components/suppliers/RestockOrderDialogs'
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { DataTable } from '@/components/shared/DataTable'
 import { PageHeader, RowActions } from '@/components/shared/PageHeader'
 import { PaginationControls, paginate, totalPages } from '@/components/shared/PaginationControls'
@@ -18,12 +19,12 @@ import { SearchInput } from '@/components/shared/SearchInput'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { isAdminOrAbove } from '@/lib/roles'
-import { useGetRestockOrdersQuery } from '@/redux/api/restockApi'
-import { selectCurrentUser } from '@/redux/slices/authSlice'
+import { usePermissions } from '@/hooks/usePermissions'
+import { getApiErrorMessage } from '@/lib/errors'
+import { useDeleteRestockOrderMutation, useGetRestockOrdersQuery } from '@/redux/api/restockApi'
 import type { RestockOrder } from '@/types/api'
 import { Plus } from 'lucide-react'
-import { useSelector } from 'react-redux'
+import { toast } from 'sonner'
 
 const STATUS_OPTIONS = [
     { value: 'all', label: 'All statuses' },
@@ -34,10 +35,10 @@ const STATUS_OPTIONS = [
 ]
 
 export default function RestockOrdersPage() {
-    const user = useSelector(selectCurrentUser)
-    const isAdmin = isAdminOrAbove(user?.role)
+    const { canWrite, canDelete } = usePermissions()
     const [statusFilter, setStatusFilter] = useState('all')
     const { data, isLoading } = useGetRestockOrdersQuery(statusFilter === 'all' ? undefined : statusFilter)
+    const [deleteRestockOrder, { isLoading: deleting }] = useDeleteRestockOrderMutation()
     const [search, setSearch] = useState('')
     const [page, setPage] = useState(1)
     const [createOpen, setCreateOpen] = useState(false)
@@ -46,6 +47,7 @@ export default function RestockOrdersPage() {
     const [refundOrder, setRefundOrder] = useState<RestockOrder | null>(null)
     const [receiveOrder, setReceiveOrder] = useState<RestockOrder | null>(null)
     const [cancelOrder, setCancelOrder] = useState<RestockOrder | null>(null)
+    const [deleteOrderTarget, setDeleteOrderTarget] = useState<RestockOrder | null>(null)
     const perPage = 10
 
     const filtered = useMemo(() => {
@@ -62,13 +64,24 @@ export default function RestockOrdersPage() {
 
     const rows = paginate(filtered, page, perPage)
 
+    const handleDeleteRestockOrder = async () => {
+        if (!deleteOrderTarget) return
+        try {
+            await deleteRestockOrder(deleteOrderTarget.id ?? deleteOrderTarget._id).unwrap()
+            toast.success('Restock order deleted permanently')
+            setDeleteOrderTarget(null)
+        } catch (err) {
+            toast.error(getApiErrorMessage(err, 'Failed to delete restock order'))
+        }
+    }
+
     return (
         <div>
             <PageHeader
                 title="Restock orders"
                 description="Manage supplier purchase orders, payments, and returns"
                 actions={
-                    isAdmin ? (
+                    canWrite ? (
                         <Button onClick={() => setCreateOpen(true)}>
                             <Plus className="size-4" /> New order
                         </Button>
@@ -156,11 +169,11 @@ export default function RestockOrdersPage() {
                     const isReceived = order.status === 'received'
                     const isCancelled = order.status === 'cancelled'
                     const outstanding = restockOutstanding(order)
-                    const canReceive = (isDraft || isOrdered) && isAdmin
-                    const canPay = isReceived && !isCancelled && outstanding > 0 && isAdmin
-                    const canRefund = isReceived && !isCancelled && hasReturnableItems(order) && isAdmin
-                    const canCancel = isDraft && isAdmin
-                    const canPlace = isDraft && isAdmin
+                    const canReceive = (isDraft || isOrdered) && canWrite
+                    const canPay = isReceived && !isCancelled && outstanding > 0 && canWrite
+                    const canRefund = isReceived && !isCancelled && hasReturnableItems(order) && canWrite
+                    const canCancel = isDraft && canWrite
+                    const canPlace = isDraft && canWrite
 
                     return (
                         <RowActions
@@ -195,6 +208,15 @@ export default function RestockOrdersPage() {
                                             size="sm"
                                             onClick={() => setRefundOrder(order)}>
                                             Refund
+                                        </Button>
+                                    ) : null}
+                                    {canDelete ? (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-destructive"
+                                            onClick={() => setDeleteOrderTarget(order)}>
+                                            Delete
                                         </Button>
                                     ) : null}
                                 </>
@@ -240,6 +262,14 @@ export default function RestockOrdersPage() {
                 onOpenChange={() => setCancelOrder(null)}
                 order={cancelOrder}
                 onSuccess={() => setCancelOrder(null)}
+            />
+            <ConfirmDialog
+                open={!!deleteOrderTarget}
+                onOpenChange={() => setDeleteOrderTarget(null)}
+                title="Delete restock order permanently?"
+                description="This removes the restock order record only. Product stock and supplier transactions will not be changed."
+                onConfirm={handleDeleteRestockOrder}
+                loading={deleting}
             />
         </div>
     )

@@ -15,7 +15,8 @@
             "width": 1200,
             "height": 800,
             "icon": "/icon.png",
-            "injectGlobals": true
+            "injectGlobals": true,
+            "exitProcessOnClose": false
         }
     },
     "cli": {

@@ -14,7 +14,8 @@
             "width": 1200,
             "height": 800,
             "icon": "/icon.png",
-            "enableInspector": true
+            "enableInspector": true,
+            "exitProcessOnClose": false
         }
     },
     "logging": {

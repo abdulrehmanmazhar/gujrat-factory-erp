@@ -6,12 +6,14 @@ import { DataTable } from '@/components/shared/DataTable'
 import { PageHeader, RowActions } from '@/components/shared/PageHeader'
 import { PaginationControls, paginate, totalPages } from '@/components/shared/PaginationControls'
 import { SearchInput } from '@/components/shared/SearchInput'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useDeleteCustomerMutation, useGetCustomersQuery } from '@/redux/api/customersApi'
 import type { Customer } from '@/types/api'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function CustomersPage() {
+    const { canWrite, canDelete } = usePermissions()
     const { data, isLoading, refetch } = useGetCustomersQuery()
     const [deleteCustomer, { isLoading: deleting }] = useDeleteCustomerMutation()
     const [search, setSearch] = useState('')
@@ -48,13 +50,15 @@ export default function CustomersPage() {
                 title="Customers"
                 description="Manage customer records and udhar balances"
                 actions={
-                    <Button
-                        onClick={() => {
-                            setEditCustomer(null)
-                            setFormOpen(true)
-                        }}>
-                        <Plus className="size-4" /> Add Customer
-                    </Button>
+                    canWrite ? (
+                        <Button
+                            onClick={() => {
+                                setEditCustomer(null)
+                                setFormOpen(true)
+                            }}>
+                            <Plus className="size-4" /> Add Customer
+                        </Button>
+                    ) : undefined
                 }
             />
 
@@ -85,15 +89,23 @@ export default function CustomersPage() {
                     }
                 ]}
                 rows={rows as unknown as Record<string, unknown>[]}
-                renderActions={(row) => (
-                    <RowActions
-                        onEdit={() => {
-                            setEditCustomer(row as unknown as Customer)
-                            setFormOpen(true)
-                        }}
-                        onDelete={() => setDeleteId(String(row.id ?? row._id))}
-                    />
-                )}
+                renderActions={
+                    canWrite || canDelete
+                        ? (row) => (
+                              <RowActions
+                                  onEdit={
+                                      canWrite
+                                          ? () => {
+                                                setEditCustomer(row as unknown as Customer)
+                                                setFormOpen(true)
+                                            }
+                                          : undefined
+                                  }
+                                  onDelete={canDelete ? () => setDeleteId(String(row.id ?? row._id)) : undefined}
+                              />
+                          )
+                        : undefined
+                }
             />
 
             <CustomerFormDialog

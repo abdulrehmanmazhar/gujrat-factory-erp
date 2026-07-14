@@ -311,6 +311,19 @@ export async function cancelRestockOrder(id: string) {
     return getRestockWithItems(id)
 }
 
+/** Super-admin purge: removes restock order rows only — does not adjust stock or supplier transactions. */
+export async function deleteRestockOrderPermanently(id: string) {
+    const [order] = await db.select().from(restockOrders).where(eq(restockOrders.id, id)).limit(1)
+    if (!order) throw new AppError('Restock order not found', 404)
+
+    await db.transaction(async (tx) => {
+        await tx.delete(restockOrderItems).where(eq(restockOrderItems.restockOrderId, id))
+        await tx.delete(restockOrders).where(eq(restockOrders.id, id))
+    })
+
+    return { message: 'Restock order deleted permanently' }
+}
+
 export async function addRestockOrderItem(restockOrderId: string, item: RestockItemInput) {
     const [order] = await db.select().from(restockOrders).where(eq(restockOrders.id, restockOrderId)).limit(1)
     if (!order) throw new AppError('Restock order not found', 404)

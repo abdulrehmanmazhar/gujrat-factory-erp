@@ -4,11 +4,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import constants from '@/constants/app'
 import { useWhatsAppSocket } from '@/hooks/useWhatsAppSocket'
 import { MessageCircle } from 'lucide-react'
+import { selectIsLoggedIn } from '@/redux/slices/authSlice'
+import { useSelector } from 'react-redux'
 
 export function WhatsAppSetupGate({ children }: { children: React.ReactNode }) {
     const { qrCode, connected, socketReady, socketError } = useWhatsAppSocket()
 
-    if (connected) return <>{children}</>
+    const loggedIn = useSelector(selectIsLoggedIn)
+
+    if (connected || loggedIn) return <>{children}</>
 
     return (
         <div className="flex min-h-screen flex-col items-center justify-center bg-muted/40 p-4">

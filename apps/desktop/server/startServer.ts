@@ -2,6 +2,7 @@ import http from 'node:http'
 import { Server } from 'socket.io'
 import { app } from './app.js'
 import { appConfig } from './config/env.js'
+import { emitServerReady } from './utils/lifecycleSignals.js'
 import { logger } from './config/logger.js'
 import { connectDB } from './utils/db.js'
 import { runScheduler } from './services/order.service.js'
@@ -31,7 +32,18 @@ io.on('connection', async (socket) => {
 
 connectWhatsapp(io)
 
+function setupGracefulShutdown() {
+    const shutdown = () => {
+        server.close(() => process.exit(0))
+        setTimeout(() => process.exit(0), 2_000).unref()
+    }
+
+    process.once('SIGTERM', shutdown)
+    process.once('SIGINT', shutdown)
+}
+
 export async function startServer() {
+    setupGracefulShutdown()
     await connectDB()
     runScheduler()
 
@@ -51,6 +63,7 @@ export async function startServer() {
         server.listen(appConfig.PORT, '127.0.0.1', () => {
             server.removeAllListeners('error')
             logger.info(`Server running on port ${appConfig.PORT}`)
+            emitServerReady(appConfig.PORT)
             resolve()
         })
     })

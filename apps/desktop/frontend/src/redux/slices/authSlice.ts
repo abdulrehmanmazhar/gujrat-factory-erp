@@ -3,9 +3,9 @@ import type { User } from '@/types/api'
 
 const USER_KEY = 'erp_user'
 
-function loadUser(): User | null {
+async function loadUser(): Promise<User | null> {
     try {
-        const raw = localStorage.getItem(USER_KEY)
+        const raw = await window.platform.storage.getData(USER_KEY)
         return raw ? (JSON.parse(raw) as User) : null
     } catch {
         return null
@@ -19,8 +19,8 @@ interface AuthState {
 }
 
 const initialState: AuthState = {
-    user: loadUser(),
-    loggedIn: !!loadUser(),
+    user: await loadUser(),
+    loggedIn: !!(await loadUser()),
     token: null
 }
 

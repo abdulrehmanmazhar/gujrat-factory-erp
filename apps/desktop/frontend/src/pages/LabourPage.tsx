@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getApiErrorMessage } from '@/lib/errors'
-import { isAdminOrAbove } from '@/lib/roles'
+import { usePermissions } from '@/hooks/usePermissions'
 import {
     useDeleteLabourTransactionMutation,
     useGetLabourersQuery,
@@ -19,10 +19,8 @@ import {
     useGetProductionEntriesQuery,
     useUpdateLabourerMutation
 } from '@/redux/api/labourApi'
-import { selectCurrentUser } from '@/redux/slices/authSlice'
 import type { Labourer, LabourTransactionCategory, LabourerTransaction } from '@/types/api'
 import { DollarSign, Plus } from 'lucide-react'
-import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
 
 const CATEGORY_LABELS: Record<LabourTransactionCategory, string> = {
@@ -34,8 +32,7 @@ const CATEGORY_LABELS: Record<LabourTransactionCategory, string> = {
 }
 
 export default function LabourPage() {
-    const user = useSelector(selectCurrentUser)
-    const isAdmin = isAdminOrAbove(user?.role)
+    const { canWrite, canDelete: canDeleteRecords } = usePermissions()
     const { data: labourersData, isLoading: loadingWorkers, refetch: refetchWorkers } = useGetLabourersQuery(true)
     const { data: productionData, isLoading: loadingProduction, refetch: refetchProduction } = useGetProductionEntriesQuery()
     const { data: transactionsData, isLoading: loadingTransactions, refetch: refetchTransactions } = useGetLabourTransactionsQuery()
@@ -100,7 +97,7 @@ export default function LabourPage() {
                 title="Labour"
                 description="Manage workers, pay rates, production, and labour payments or expenses"
                 actions={
-                    isAdmin ? (
+                    canWrite ? (
                         <>
                             {tab === 'workers' ? (
                                 <Button
@@ -172,7 +169,7 @@ export default function LabourPage() {
                         ]}
                         rows={filteredWorkers as unknown as Record<string, unknown>[]}
                         renderActions={
-                            isAdmin
+                            canWrite
                                 ? (row) => {
                                       const worker = row as unknown as Labourer
                                       return (
@@ -276,12 +273,12 @@ export default function LabourPage() {
                         ]}
                         rows={filteredTxns as unknown as Record<string, unknown>[]}
                         renderActions={
-                            isAdmin
+                            canWrite
                                 ? (row) => {
                                       const txn = row as unknown as LabourerTransaction
                                       const category = txn.labourCategory ?? txn.category
-                                      const canDelete = category && category !== 'production'
-                                      if (!canDelete) return null
+                                      const canDeleteTxn = canDeleteRecords && category && category !== 'production'
+                                      if (!canDeleteTxn) return null
                                       return (
                                           <RowActions
                                               onDelete={() => setDeleteTxnId(String(txn.id ?? txn._id))}

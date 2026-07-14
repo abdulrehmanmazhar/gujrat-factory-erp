@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useGetRecentTransactionsQuery, useGetSalesMutation } from '@/redux/api/usersApi'
 import { useGetStockVsPendingQuery, useGetUpcomingDeliveriesQuery, usePostponeDeliveryMutation } from '@/redux/api/analyticsApi'
 import type { CustomerTransaction, SupplierTransaction } from '@/types/api'
@@ -26,6 +27,7 @@ function formatDate(value?: string | Date | null) {
 }
 
 export default function DashboardPage() {
+    const { canWrite } = usePermissions()
     const [getSales, { isLoading: salesLoading }] = useGetSalesMutation()
     const { data: recentData, isLoading: recentLoading } = useGetRecentTransactionsQuery(10)
     const { data: upcomingData, isLoading: upcomingLoading } = useGetUpcomingDeliveriesQuery(14)
@@ -162,15 +164,18 @@ export default function DashboardPage() {
                             {
                                 key: 'actions',
                                 label: '',
-                                render: (row) => (
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => openPostpone(row)}>
-                                        Postpone
-                                    </Button>
-                                )
+                                render: (row) =>
+                                    canWrite ? (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => openPostpone(row)}>
+                                            Postpone
+                                        </Button>
+                                    ) : (
+                                        '—'
+                                    )
                             }
                         ]}
                         rows={upcomingOrders as unknown as Record<string, unknown>[]}

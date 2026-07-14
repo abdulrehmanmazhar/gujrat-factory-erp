@@ -36,6 +36,11 @@ export const cancelRestockOrder = CatchAsyncError(async (req: Request, res: Resp
     httpResponse(req, res, 200, 'Restock order cancelled successfully', { order })
 })
 
+export const deleteRestockOrder = CatchAsyncError(async (req: Request, res: Response) => {
+    const result = await restockService.deleteRestockOrderPermanently(param(req.params.id))
+    httpResponse(req, res, 200, result.message, null)
+})
+
 export const addRestockOrderItem = CatchAsyncError(async (req: Request, res: Response) => {
     const order = await restockService.addRestockOrderItem(param(req.params.id), req.body)
     httpResponse(req, res, 200, 'Restock order item added successfully', { order })

@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { useGetCustomersQuery } from '@/redux/api/customersApi'
 import { useGetOrdersQuery } from '@/redux/api/ordersApi'
 import { useGetProductsQuery } from '@/redux/api/productsApi'
+import { usePermissions } from '@/hooks/usePermissions'
 import { downloadAnalyticsExcel, useGetHomeAnalyticsQuery } from '@/redux/api/analyticsApi'
 import { selectAuthToken } from '@/redux/slices/authSlice'
 import { Package, ShoppingCart, Users, Wallet, Download } from 'lucide-react'
@@ -30,7 +31,8 @@ function ChartCard({
     data,
     exportReport,
     onExport,
-    exporting
+    exporting,
+    showExport = true
 }: {
     title: string
     total: number
@@ -38,6 +40,7 @@ function ChartCard({
     exportReport: string
     onExport: (report: string) => void
     exporting: string | null
+    showExport?: boolean
 }) {
     return (
         <Card>
@@ -46,15 +49,17 @@ function ChartCard({
                     <CardTitle className="text-base">{title}</CardTitle>
                     <p className="text-sm text-muted-foreground">Total: PKR {total.toLocaleString()}</p>
                 </div>
-                <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={exporting === exportReport}
-                    onClick={() => onExport(exportReport)}>
-                    <Download className="mr-2 size-4" />
-                    Excel
-                </Button>
+                {showExport ? (
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={exporting === exportReport}
+                        onClick={() => onExport(exportReport)}>
+                        <Download className="mr-2 size-4" />
+                        Excel
+                    </Button>
+                ) : null}
             </CardHeader>
             <CardContent className="h-64">
                 <ResponsiveContainer
@@ -86,6 +91,7 @@ function ChartCard({
 }
 
 export default function HomePage() {
+    const { canWrite } = usePermissions()
     const token = useSelector(selectAuthToken)
     const [range, setRange] = useState(defaultRange)
     const [exporting, setExporting] = useState<string | null>(null)
@@ -178,6 +184,7 @@ export default function HomePage() {
                         exportReport="revenue"
                         onExport={handleExport}
                         exporting={exporting}
+                        showExport={canWrite}
                     />
                     <ChartCard
                         title="Labour salaries & production pay"
@@ -186,6 +193,7 @@ export default function HomePage() {
                         exportReport="labour"
                         onExport={handleExport}
                         exporting={exporting}
+                        showExport={canWrite}
                     />
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -197,26 +205,28 @@ export default function HomePage() {
                                     {(analytics?.expenses.breakdown?.labour ?? 0).toLocaleString()}
                                 </p>
                             </div>
-                            <div className="flex gap-2">
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={exporting === 'expenses-supplier'}
-                                    onClick={() => handleExport('expenses-supplier')}>
-                                    <Download className="mr-2 size-4" />
-                                    Supplier Excel
-                                </Button>
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={exporting === 'expenses-labour'}
-                                    onClick={() => handleExport('expenses-labour')}>
-                                    <Download className="mr-2 size-4" />
-                                    Labour Excel
-                                </Button>
-                            </div>
+                            {canWrite ? (
+                                <div className="flex gap-2">
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={exporting === 'expenses-supplier'}
+                                        onClick={() => handleExport('expenses-supplier')}>
+                                        <Download className="mr-2 size-4" />
+                                        Supplier Excel
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={exporting === 'expenses-labour'}
+                                        onClick={() => handleExport('expenses-labour')}>
+                                        <Download className="mr-2 size-4" />
+                                        Labour Excel
+                                    </Button>
+                                </div>
+                            ) : null}
                         </CardHeader>
                         <CardContent className="h-64">
                             <ResponsiveContainer
@@ -253,15 +263,17 @@ export default function HomePage() {
                                     {(analytics?.stock.currentStockTotal ?? 0).toLocaleString()}
                                 </p>
                             </div>
-                            <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                disabled={exporting === 'stock-history'}
-                                onClick={() => handleExport('stock-history')}>
-                                <Download className="mr-2 size-4" />
-                                Excel
-                            </Button>
+                            {canWrite ? (
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={exporting === 'stock-history'}
+                                    onClick={() => handleExport('stock-history')}>
+                                    <Download className="mr-2 size-4" />
+                                    Excel
+                                </Button>
+                            ) : null}
                         </CardHeader>
                         <CardContent className="h-64">
                             <ResponsiveContainer
