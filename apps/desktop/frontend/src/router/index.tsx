@@ -17,6 +17,9 @@ import DelayedOrderPage from '@/pages/DelayedOrderPage'
 import WhatsAppPage from '@/pages/WhatsAppPage'
 import ProfilePage from '@/pages/ProfilePage'
 import SettingsPage from '@/pages/SettingsPage'
+import AiAnalyticsPage from '@/pages/AiAnalyticsPage'
+import MiscellaneousExpenditurePage from '@/pages/MiscellaneousExpenditurePage'
+import KhataPage from '@/pages/KhataPage'
 import { Route, Routes } from 'react-router-dom'
 
 export default function Router() {
@@ -96,6 +99,22 @@ export default function Router() {
                     }
                 />
                 <Route
+                    path="miscellaneous-expenditure"
+                    element={
+                        <RequireWrite>
+                            <MiscellaneousExpenditurePage />
+                        </RequireWrite>
+                    }
+                />
+                <Route
+                    path="khata"
+                    element={
+                        <RequireWrite>
+                            <KhataPage />
+                        </RequireWrite>
+                    }
+                />
+                <Route
                     path="community"
                     element={
                         <RequireSuperAdmin>
@@ -114,6 +133,10 @@ export default function Router() {
                 <Route
                     path="help"
                     element={<HelpPage />}
+                />
+                <Route
+                    path="ai-analytics"
+                    element={<AiAnalyticsPage />}
                 />
             </Route>
             <Route

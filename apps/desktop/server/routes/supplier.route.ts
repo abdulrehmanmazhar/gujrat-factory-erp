@@ -6,6 +6,7 @@ import {
     getSupplier,
     getSuppliers,
     linkSupplierProduct,
+    linkSupplierProductsByCategories,
     unlinkSupplierProduct,
     updateSupplier
 } from '../controllers/supplier.controller.js'
@@ -17,6 +18,7 @@ router.get('/suppliers', isAuthenticated, getSuppliers)
 router.get('/suppliers/:id', isAuthenticated, getSupplier)
 router.put('/suppliers/:id', isAuthenticated, authorizeWrite, updateSupplier)
 router.delete('/suppliers/:id', isAuthenticated, authorizeDelete, deactivateSupplier)
+router.post('/suppliers/:id/products/by-categories', isAuthenticated, authorizeWrite, linkSupplierProductsByCategories)
 router.post('/suppliers/:id/products', isAuthenticated, authorizeWrite, linkSupplierProduct)
 router.delete('/suppliers/:id/products/:productId', isAuthenticated, authorizeDelete, unlinkSupplierProduct)
 

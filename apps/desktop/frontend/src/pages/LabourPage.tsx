@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { LabourerFormDialog } from '@/components/labour/LabourerFormDialog'
 import { LabourRatesDialog } from '@/components/labour/LabourRatesDialog'
 import { RecordLabourTransactionDialog } from '@/components/labour/RecordLabourTransactionDialog'
 import { RecordProductionDialog } from '@/components/labour/RecordProductionDialog'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { DataTable } from '@/components/shared/DataTable'
+import { DateRangeFilter, isWithinDateRange } from '@/components/shared/DateRangeFilter'
 import { PageHeader, RowActions } from '@/components/shared/PageHeader'
 import { SearchInput } from '@/components/shared/SearchInput'
 import { Badge } from '@/components/ui/badge'
@@ -41,6 +42,8 @@ export default function LabourPage() {
 
     const [tab, setTab] = useState('workers')
     const [search, setSearch] = useState('')
+    const [txnFrom, setTxnFrom] = useState('')
+    const [txnTo, setTxnTo] = useState('')
     const [workerFormOpen, setWorkerFormOpen] = useState(false)
     const [ratesOpen, setRatesOpen] = useState(false)
     const [recordOpen, setRecordOpen] = useState(false)
@@ -68,15 +71,18 @@ export default function LabourPage() {
     })
 
     const txns = transactionsData?.transactions ?? []
-    const filteredTxns = txns.filter((t) => {
-        if (!search.trim() || tab !== 'transactions') return true
-        const q = search.toLowerCase()
-        return (
-            t.labourer?.name?.toLowerCase().includes(q) ||
-            t.description.toLowerCase().includes(q) ||
-            (t.labourCategory ?? '').toLowerCase().includes(q)
-        )
-    })
+    const filteredTxns = useMemo(() => {
+        return txns.filter((t) => {
+            if (!isWithinDateRange(t.createdAt, txnFrom, txnTo)) return false
+            if (!search.trim() || tab !== 'transactions') return true
+            const q = search.toLowerCase()
+            return (
+                t.labourer?.name?.toLowerCase().includes(q) ||
+                t.description.toLowerCase().includes(q) ||
+                (t.labourCategory ?? '').toLowerCase().includes(q)
+            )
+        })
+    }, [txns, search, tab, txnFrom, txnTo])
 
     const handleToggleActive = async (worker: Labourer) => {
         try {
@@ -131,7 +137,7 @@ export default function LabourPage() {
                     <TabsTrigger value="transactions">Transactions</TabsTrigger>
                 </TabsList>
 
-                <div className="mb-4">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
                     <SearchInput
                         value={search}
                         onChange={setSearch}
@@ -139,6 +145,14 @@ export default function LabourPage() {
                             tab === 'workers' ? 'Search workers...' : tab === 'production' ? 'Search production entries...' : 'Search transactions...'
                         }
                     />
+                    {tab === 'transactions' ? (
+                        <DateRangeFilter
+                            from={txnFrom}
+                            to={txnTo}
+                            onFromChange={setTxnFrom}
+                            onToChange={setTxnTo}
+                        />
+                    ) : null}
                 </div>
 
                 <TabsContent value="workers">

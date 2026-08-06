@@ -46,6 +46,17 @@ export const suppliersApi = apiSlice.injectEndpoints({
             }),
             invalidatesTags: ['Suppliers', 'Products']
         }),
+        linkSupplierProductsByCategories: builder.mutation<
+            ApiEnvelope<{ linked: number; productIds: string[] }>,
+            { supplierId: string; categoryIds: string[]; supplierSku?: string; unitCost?: number; isPreferred?: boolean }
+        >({
+            query: ({ supplierId, ...body }) => ({
+                url: `/suppliers/${supplierId}/products/by-categories`,
+                method: 'POST',
+                body
+            }),
+            invalidatesTags: ['Suppliers', 'Products']
+        }),
         unlinkSupplierProduct: builder.mutation<ApiEnvelope<null>, { supplierId: string; productId: string }>({
             query: ({ supplierId, productId }) => ({
                 url: `/suppliers/${supplierId}/products/${productId}`,
@@ -63,5 +74,6 @@ export const {
     useUpdateSupplierMutation,
     useDeactivateSupplierMutation,
     useLinkSupplierProductMutation,
+    useLinkSupplierProductsByCategoriesMutation,
     useUnlinkSupplierProductMutation
 } = suppliersApi

@@ -209,7 +209,13 @@ async function recordPaymentTransaction(
     return txn
 }
 
-async function applyOrderRefund(orderId: string, refundAmount: number, userId: string, description?: string) {
+async function applyOrderRefund(
+    orderId: string,
+    refundAmount: number,
+    userId: string,
+    description?: string,
+    proof?: { paymentMode?: string; proofImage?: string; proofImagePublicId?: string }
+) {
     if (refundAmount <= 0) return null
 
     const updated = await db.transaction(async (tx) => {
@@ -236,7 +242,10 @@ async function applyOrderRefund(orderId: string, refundAmount: number, userId: s
             type: 'refund',
             amount: refundAmount,
             description: description ?? 'Order refund',
-            createdById: userId
+            createdById: userId,
+            paymentMode: proof?.paymentMode ?? 'cash',
+            proofImage: proof?.proofImage,
+            proofImagePublicId: proof?.proofImagePublicId
         })
 
         await adjustCustomerUdhar(tx, order.customerId, refundAmount)
@@ -252,7 +261,8 @@ async function applyOrderPaymentInternal(
     orderId: string,
     payment: number,
     userId: string,
-    markDelivered: boolean
+    markDelivered: boolean,
+    proof?: { paymentMode?: string; proofImage?: string; proofImagePublicId?: string }
 ) {
     const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1)
     if (!order) throw new AppError('Order not found', 404)
@@ -279,7 +289,10 @@ async function applyOrderPaymentInternal(
             type: 'sale',
             amount: payment,
             description: 'Sales from order',
-            createdById: userId
+            createdById: userId,
+            paymentMode: proof?.paymentMode ?? 'cash',
+            proofImage: proof?.proofImage,
+            proofImagePublicId: proof?.proofImagePublicId
         })
         await adjustCustomerUdhar(tx, order.customerId, -payment)
     }
@@ -287,8 +300,14 @@ async function applyOrderPaymentInternal(
     return withLegacyId(updatedOrder)
 }
 
-async function applyOrderPayment(orderId: string, payment: number, userId: string, markDelivered: boolean) {
-    const updatedOrder = await db.transaction(async (tx) => applyOrderPaymentInternal(tx, orderId, payment, userId, markDelivered))
+async function applyOrderPayment(
+    orderId: string,
+    payment: number,
+    userId: string,
+    markDelivered: boolean,
+    proof?: { paymentMode?: string; proofImage?: string; proofImagePublicId?: string }
+) {
+    const updatedOrder = await db.transaction(async (tx) => applyOrderPaymentInternal(tx, orderId, payment, userId, markDelivered, proof))
 
     if (payment > 0) {
         const [txn] = await db
@@ -488,7 +507,12 @@ export async function cancelOrder(orderId: string, refundAmount: number, userId:
     return mapOrderWithCart(fresh ?? updated, items)
 }
 
-export async function returnOrder(orderId: string, refundAmount: number, userId: string) {
+export async function returnOrder(
+    orderId: string,
+    refundAmount: number,
+    userId: string,
+    proof?: { paymentMode?: string; proofImage?: string; proofImagePublicId?: string }
+) {
     const updated = await db.transaction(async (tx) => {
         const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1)
         if (!order) throw new AppError('Order not found', 404)
@@ -538,7 +562,10 @@ export async function returnOrder(orderId: string, refundAmount: number, userId:
                 type: 'refund',
                 amount: refundAmount,
                 description: 'Refund on order return',
-                createdById: userId
+                createdById: userId,
+                paymentMode: proof?.paymentMode ?? 'cash',
+                proofImage: proof?.proofImage,
+                proofImagePublicId: proof?.proofImagePublicId
             })
         }
 
@@ -592,7 +619,12 @@ export async function listOrders() {
     )
 }
 
-export async function addOrderPayment(orderId: string, payment: number, userId: string) {
+export async function addOrderPayment(
+    orderId: string,
+    payment: number,
+    userId: string,
+    proof?: { paymentMode?: string; proofImage?: string; proofImagePublicId?: string }
+) {
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
     if (!order) throw new AppError('Order not found', 404)
     if (order.status === 'cancelled') throw new AppError('Cancelled orders cannot accept payments', 400)
@@ -604,15 +636,21 @@ export async function addOrderPayment(orderId: string, payment: number, userId: 
     if (outstanding <= 0) throw new AppError('This order is already fully paid', 400)
     if (payment > outstanding) throw new AppError('Cannot pay more than the remaining amount', 400)
 
-    return applyOrderPayment(orderId, payment, userId, order.orderMode === 'pos')
+    return applyOrderPayment(orderId, payment, userId, order.orderMode === 'pos', proof)
 }
 
-export async function recordOrderRefund(orderId: string, refundAmount: number, userId: string, notes?: string) {
+export async function recordOrderRefund(
+    orderId: string,
+    refundAmount: number,
+    userId: string,
+    notes?: string,
+    proof?: { paymentMode?: string; proofImage?: string; proofImagePublicId?: string }
+) {
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
     if (!order) throw new AppError('Order not found', 404)
     if (refundAmount <= 0) throw new AppError('Refund amount must be positive', 400)
 
-    const updated = await applyOrderRefund(orderId, refundAmount, userId, notes?.trim() || 'Order refund installment')
+    const updated = await applyOrderRefund(orderId, refundAmount, userId, notes?.trim() || 'Order refund installment', proof)
     const items = await getOrderItemsWithProducts(orderId)
     return mapOrderWithCart(updated, items)
 }

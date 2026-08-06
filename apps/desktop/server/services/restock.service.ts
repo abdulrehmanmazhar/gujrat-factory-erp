@@ -219,7 +219,13 @@ export async function receiveRestockOrder(id: string, receivedById: string, rece
     return getRestockWithItems(id)
 }
 
-export async function recordRestockPayment(restockOrderId: string, amount: number, userId: string, notes?: string) {
+export async function recordRestockPayment(
+    restockOrderId: string,
+    amount: number,
+    userId: string,
+    notes?: string,
+    proof?: { paymentMode?: string; proofImage?: string; proofImagePublicId?: string }
+) {
     const [order] = await db.select().from(restockOrders).where(eq(restockOrders.id, restockOrderId)).limit(1)
     if (!order) throw new AppError('Restock order not found', 404)
     if (order.status !== 'received') throw new AppError('Payments can only be recorded on received restock orders', 400)
@@ -237,7 +243,10 @@ export async function recordRestockPayment(restockOrderId: string, amount: numbe
         type: 'payment',
         amount,
         description: notes?.trim() || `Payment for restock order ${order.referenceNumber ?? restockOrderId.slice(0, 8)}`,
-        createdById: userId
+        createdById: userId,
+        paymentMode: proof?.paymentMode ?? 'cash',
+        proofImage: proof?.proofImage,
+        proofImagePublicId: proof?.proofImagePublicId
     })
 
     await db
@@ -253,7 +262,8 @@ export async function recordRestockRefund(
     userId: string,
     notes?: string,
     returnedItems?: ReturnedItemInput[],
-    requestedCashRefund?: number
+    requestedCashRefund?: number,
+    proof?: { paymentMode?: string; proofImage?: string; proofImagePublicId?: string }
 ) {
     const [order] = await db.select().from(restockOrders).where(eq(restockOrders.id, restockOrderId)).limit(1)
     if (!order) throw new AppError('Restock order not found', 404)
@@ -285,7 +295,10 @@ export async function recordRestockRefund(
             type: 'refund',
             amount: cashRefund,
             description: notes?.trim() || `Refund from supplier for restock order ${order.referenceNumber ?? restockOrderId.slice(0, 8)}`,
-            createdById: userId
+            createdById: userId,
+            paymentMode: proof?.paymentMode ?? 'cash',
+            proofImage: proof?.proofImage,
+            proofImagePublicId: proof?.proofImagePublicId
         })
     }
 

@@ -14,6 +14,9 @@ export async function createSupplierTransaction(data: {
     description: string
     createdById: string
     restockOrderId?: string
+    paymentMode?: string
+    proofImage?: string
+    proofImagePublicId?: string
 }) {
     const [transaction] = await db
         .insert(supplierTransactions)
@@ -24,7 +27,10 @@ export async function createSupplierTransaction(data: {
             type: data.type,
             amount: data.amount,
             description: data.description,
-            createdById: data.createdById
+            createdById: data.createdById,
+            paymentMode: data.paymentMode ?? 'cash',
+            proofImage: data.proofImage,
+            proofImagePublicId: data.proofImagePublicId
         })
         .returning()
 

@@ -1,0 +1,1 @@
+ALTER TABLE `suppliers` ADD `payable` real DEFAULT 0 NOT NULL;

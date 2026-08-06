@@ -35,6 +35,26 @@ export const customers = sqliteTable('customers', {
     updatedAt: updatedAt()
 })
 
+export const units = sqliteTable('units', {
+    id: text('id').primaryKey(),
+    name: text('name').notNull().unique(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt()
+})
+
+export const categories = sqliteTable(
+    'categories',
+    {
+        id: text('id').primaryKey(),
+        name: text('name').notNull(),
+        parentId: text('parent_id'),
+        sortOrder: integer('sort_order').notNull().default(0),
+        createdAt: createdAt(),
+        updatedAt: updatedAt()
+    },
+    (table) => [uniqueIndex('categories_parent_name_idx').on(table.parentId, table.name)]
+)
+
 export const products = sqliteTable('products', {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
@@ -44,9 +64,20 @@ export const products = sqliteTable('products', {
     inStock: integer('in_stock', { mode: 'boolean' }).notNull().default(false),
     purchasePrice: real('purchase_price'),
     discount: real('discount').default(0),
+    unitId: text('unit_id').notNull().default('unit-pcs'),
     createdAt: createdAt(),
     updatedAt: updatedAt()
 })
+
+export const productCategories = sqliteTable(
+    'product_categories',
+    {
+        productId: text('product_id').notNull(),
+        categoryId: text('category_id').notNull(),
+        createdAt: createdAt()
+    },
+    (table) => [primaryKey({ columns: [table.productId, table.categoryId] })]
+)
 
 export const productStockHistory = sqliteTable('product_stock_history', {
     id: text('id').primaryKey(),
@@ -67,6 +98,7 @@ export const suppliers = sqliteTable('suppliers', {
     address: text('address'),
     contact: text('contact').notNull(),
     notes: text('notes'),
+    payable: real('payable').notNull().default(0),
     isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
     createdAt: createdAt(),
     updatedAt: updatedAt()
@@ -151,7 +183,9 @@ export const customerTransactions = sqliteTable('customer_transactions', {
     type: text('type').notNull(),
     amount: real('amount').notNull(),
     description: text('description').notNull(),
+    paymentMode: text('payment_mode').notNull().default('cash'),
     proofImage: text('proof_image'),
+    proofImagePublicId: text('proof_image_public_id'),
     createdById: text('created_by_id'),
     createdAt: createdAt()
 })
@@ -163,6 +197,9 @@ export const supplierTransactions = sqliteTable('supplier_transactions', {
     type: text('type').notNull(),
     amount: real('amount').notNull(),
     description: text('description').notNull(),
+    paymentMode: text('payment_mode').notNull().default('cash'),
+    proofImage: text('proof_image'),
+    proofImagePublicId: text('proof_image_public_id'),
     createdById: text('created_by_id').notNull(),
     createdAt: createdAt()
 })
@@ -262,8 +299,49 @@ export const labourProductionConsumption = sqliteTable('labour_production_consum
     createdAt: createdAt()
 })
 
+export const userGeminiApiKeys = sqliteTable('user_gemini_api_keys', {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().unique(),
+    apiKey: text('api_key').notNull(),
+    model: text('model').notNull().default('gemini-2.5-flash'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt()
+})
+
+export const aiChatSessions = sqliteTable('ai_chat_sessions', {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull(),
+    title: text('title').notNull().default('New chat'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt()
+})
+
+export const aiChatMessages = sqliteTable('ai_chat_messages', {
+    id: text('id').primaryKey(),
+    sessionId: text('session_id')
+        .notNull()
+        .references(() => aiChatSessions.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    content: text('content').notNull(),
+    responseJson: text('response_json'),
+    createdAt: createdAt()
+})
+
+export const miscellaneousExpenditures = sqliteTable('miscellaneous_expenditures', {
+    id: text('id').primaryKey(),
+    amount: real('amount').notNull(),
+    paymentMode: text('payment_mode').notNull().default('cash'),
+    note: text('note').notNull(),
+    proofImage: text('proof_image'),
+    proofImagePublicId: text('proof_image_public_id'),
+    createdById: text('created_by_id').notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt()
+})
+
 export type User = typeof users.$inferSelect
 export type Customer = typeof customers.$inferSelect
+export type Category = typeof categories.$inferSelect
 export type Product = typeof products.$inferSelect
 export type Order = typeof orders.$inferSelect
 export type OrderItem = typeof orderItems.$inferSelect

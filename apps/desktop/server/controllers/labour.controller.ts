@@ -28,11 +28,27 @@ export const updateLabourer = CatchAsyncError(async (req: Request, res: Response
 
 export const setLabourRate = CatchAsyncError(async (req: Request, res: Response) => {
     const { productId, ratePerUnit } = req.body
-    if (!productId || ratePerUnit === undefined) {
+    if (!productId || ratePerUnit === undefined || ratePerUnit === null || ratePerUnit === '') {
         throw new AppError('productId and ratePerUnit are required', 400)
     }
-    const labourer = await labourService.setLabourRate(param(req.params.id), productId, Number(ratePerUnit))
+    const rate = Number(ratePerUnit)
+    if (!Number.isFinite(rate)) throw new AppError('Rate must be a valid number', 400)
+    const labourer = await labourService.setLabourRate(param(req.params.id), productId, rate)
     httpResponse(req, res, 200, 'Labour rate saved', { labourer })
+})
+
+export const setLabourRatesByCategories = CatchAsyncError(async (req: Request, res: Response) => {
+    const { categoryIds, ratePerUnit } = req.body
+    if (!Array.isArray(categoryIds) || !categoryIds.length) {
+        throw new AppError('Select at least one category', 400)
+    }
+    if (ratePerUnit === undefined || ratePerUnit === null || ratePerUnit === '') {
+        throw new AppError('ratePerUnit is required', 400)
+    }
+    const rate = Number(ratePerUnit)
+    if (!Number.isFinite(rate)) throw new AppError('Rate must be a valid number', 400)
+    const result = await labourService.setLabourRatesByCategories(param(req.params.id), categoryIds, rate)
+    httpResponse(req, res, 200, `Saved rate for ${result.updated} product(s)`, result)
 })
 
 export const removeLabourRate = CatchAsyncError(async (req: Request, res: Response) => {

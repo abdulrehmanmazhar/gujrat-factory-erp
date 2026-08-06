@@ -31,12 +31,17 @@ export const ordersApi = apiSlice.injectEndpoints({
             }),
             invalidatesTags: ['Orders']
         }),
-        addOrderPayment: builder.mutation<ApiEnvelope<{ order: Order }>, { id: string; payment: number }>({
-            query: ({ id, payment }) => ({
-                url: `/add-order-payment/${id}`,
-                method: 'POST',
-                body: { payment }
-            }),
+        addOrderPayment: builder.mutation<
+            ApiEnvelope<{ order: Order }>,
+            { id: string; payment: number; paymentMode: 'cash' | 'online'; proofImage?: File | null }
+        >({
+            query: ({ id, payment, paymentMode, proofImage }) => {
+                const body = new FormData()
+                body.append('payment', String(payment))
+                body.append('paymentMode', paymentMode)
+                if (proofImage) body.append('proofImage', proofImage)
+                return { url: `/add-order-payment/${id}`, method: 'POST', body }
+            },
             invalidatesTags: [...ORDER_MUTATION_TAGS]
         }),
         returnOrderUdhar: builder.mutation<ApiEnvelope<{ order: Order }>, { id: string; payment: number }>({
@@ -47,20 +52,31 @@ export const ordersApi = apiSlice.injectEndpoints({
             }),
             invalidatesTags: [...ORDER_MUTATION_TAGS]
         }),
-        returnOrder: builder.mutation<ApiEnvelope<{ order: Order }>, { id: string; refundAmount: number }>({
-            query: ({ id, refundAmount }) => ({
-                url: `/return-order/${id}`,
-                method: 'POST',
-                body: { refundAmount }
-            }),
+        returnOrder: builder.mutation<
+            ApiEnvelope<{ order: Order }>,
+            { id: string; refundAmount: number; paymentMode: 'cash' | 'online'; proofImage?: File | null }
+        >({
+            query: ({ id, refundAmount, paymentMode, proofImage }) => {
+                const body = new FormData()
+                body.append('refundAmount', String(refundAmount))
+                body.append('paymentMode', paymentMode)
+                if (proofImage) body.append('proofImage', proofImage)
+                return { url: `/return-order/${id}`, method: 'POST', body }
+            },
             invalidatesTags: [...ORDER_MUTATION_TAGS]
         }),
-        recordOrderRefund: builder.mutation<ApiEnvelope<{ order: Order }>, { id: string; refundAmount: number; notes?: string }>({
-            query: ({ id, refundAmount, notes }) => ({
-                url: `/add-order-refund/${id}`,
-                method: 'POST',
-                body: { refundAmount, notes }
-            }),
+        recordOrderRefund: builder.mutation<
+            ApiEnvelope<{ order: Order }>,
+            { id: string; refundAmount: number; notes?: string; paymentMode: 'cash' | 'online'; proofImage?: File | null }
+        >({
+            query: ({ id, refundAmount, notes, paymentMode, proofImage }) => {
+                const body = new FormData()
+                body.append('refundAmount', String(refundAmount))
+                body.append('paymentMode', paymentMode)
+                if (notes) body.append('notes', notes)
+                if (proofImage) body.append('proofImage', proofImage)
+                return { url: `/add-order-refund/${id}`, method: 'POST', body }
+            },
             invalidatesTags: [...ORDER_MUTATION_TAGS]
         }),
         fillCart: builder.mutation<ApiEnvelope<{ order: Order }>, { customerId: string; cart: { productId: string; qty: number }[] }>({

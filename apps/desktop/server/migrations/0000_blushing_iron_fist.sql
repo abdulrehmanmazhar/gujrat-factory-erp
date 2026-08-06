@@ -1,3 +1,21 @@
+CREATE TABLE `ai_chat_messages` (
+	`id` text PRIMARY KEY NOT NULL,
+	`session_id` text NOT NULL,
+	`role` text NOT NULL,
+	`content` text NOT NULL,
+	`response_json` text,
+	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+	FOREIGN KEY (`session_id`) REFERENCES `ai_chat_sessions`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `ai_chat_sessions` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
+	`title` text DEFAULT 'New chat' NOT NULL,
+	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE `customer_transactions` (
 	`id` text PRIMARY KEY NOT NULL,
 	`customer_id` text NOT NULL,
@@ -5,7 +23,9 @@ CREATE TABLE `customer_transactions` (
 	`type` text NOT NULL,
 	`amount` real NOT NULL,
 	`description` text NOT NULL,
+	`payment_mode` text DEFAULT 'cash' NOT NULL,
 	`proof_image` text,
+	`proof_image_public_id` text,
 	`created_by_id` text,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 );
@@ -13,7 +33,6 @@ CREATE TABLE `customer_transactions` (
 CREATE TABLE `customers` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
-	`business_name` text,
 	`address` text NOT NULL,
 	`contact` text NOT NULL,
 	`udhar` real DEFAULT 0 NOT NULL,
@@ -74,6 +93,18 @@ CREATE TABLE `labourers` (
 	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE `miscellaneous_expenditures` (
+	`id` text PRIMARY KEY NOT NULL,
+	`amount` real NOT NULL,
+	`payment_mode` text DEFAULT 'cash' NOT NULL,
+	`note` text NOT NULL,
+	`proof_image` text,
+	`proof_image_public_id` text,
+	`created_by_id` text NOT NULL,
+	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE `order_items` (
 	`id` text PRIMARY KEY NOT NULL,
 	`order_id` text NOT NULL,
@@ -98,6 +129,7 @@ CREATE TABLE `orders` (
 	`delivery_status` integer DEFAULT false,
 	`delivery_date` integer,
 	`returned_at` integer,
+	`last_payment_reminder_at` integer,
 	`message` text,
 	`created_by_id` text NOT NULL,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
@@ -132,6 +164,7 @@ CREATE TABLE `products` (
 	`in_stock` integer DEFAULT false NOT NULL,
 	`purchase_price` real,
 	`discount` real DEFAULT 0,
+	`unit_id` text DEFAULT 'unit-pcs' NOT NULL,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
 	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 );
@@ -198,6 +231,9 @@ CREATE TABLE `supplier_transactions` (
 	`type` text NOT NULL,
 	`amount` real NOT NULL,
 	`description` text NOT NULL,
+	`payment_mode` text DEFAULT 'cash' NOT NULL,
+	`proof_image` text,
+	`proof_image_public_id` text,
 	`created_by_id` text NOT NULL,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 );
@@ -214,6 +250,24 @@ CREATE TABLE `suppliers` (
 	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE `units` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `units_name_unique` ON `units` (`name`);--> statement-breakpoint
+CREATE TABLE `user_gemini_api_keys` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
+	`api_key` text NOT NULL,
+	`model` text DEFAULT 'gemini-2.5-flash' NOT NULL,
+	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `user_gemini_api_keys_user_id_unique` ON `user_gemini_api_keys` (`user_id`);--> statement-breakpoint
 CREATE TABLE `users` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,

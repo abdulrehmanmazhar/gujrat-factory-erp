@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { CatchAsyncError } from '../middleware/catchAsyncError.js'
 import { httpResponse } from '../utils/http.js'
+import { AppError } from '../utils/errors.js'
 import { param } from '../utils/params.js'
 import * as supplierService from '../services/supplier.service.js'
 
@@ -32,6 +33,13 @@ export const deactivateSupplier = CatchAsyncError(async (req: Request, res: Resp
 export const linkSupplierProduct = CatchAsyncError(async (req: Request, res: Response) => {
     await supplierService.linkSupplierProduct(param(req.params.id), req.body.productId, req.body)
     httpResponse(req, res, 200, 'Supplier product linked successfully', null)
+})
+
+export const linkSupplierProductsByCategories = CatchAsyncError(async (req: Request, res: Response) => {
+    const categoryIds = Array.isArray(req.body.categoryIds) ? req.body.categoryIds : []
+    if (!categoryIds.length) throw new AppError('Select at least one category', 400)
+    const result = await supplierService.linkSupplierProductsByCategories(param(req.params.id), categoryIds, req.body)
+    httpResponse(req, res, 200, `Linked ${result.linked} product(s) from selected categories`, result)
 })
 
 export const unlinkSupplierProduct = CatchAsyncError(async (req: Request, res: Response) => {

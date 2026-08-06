@@ -21,6 +21,11 @@ import filesRouter from './routes/files.route.js'
 import settingsRouter from './routes/settings.route.js'
 import backupRouter from './routes/backup.route.js'
 import dashboardRouter from './routes/dashboard.route.js'
+import aiRouter from './routes/ai.route.js'
+import miscExpenditureRouter from './routes/miscExpenditure.route.js'
+import unitRouter from './routes/unit.route.js'
+import categoryRouter from './routes/category.route.js'
+import khataRouter from './routes/khata.route.js'
 
 export const app = express()
 
@@ -50,6 +55,11 @@ app.use('/api/v1', restockRouter)
 app.use('/api/v1', whatsappRouter)
 app.use('/api/v1', recipeRouter)
 app.use('/api/v1', labourRouter)
+app.use('/api/v1', aiRouter)
+app.use('/api/v1', miscExpenditureRouter)
+app.use('/api/v1', unitRouter)
+app.use('/api/v1', categoryRouter)
+app.use('/api/v1', khataRouter)
 
 app.get('/test', (_req, res) => {
     res.status(200).json({

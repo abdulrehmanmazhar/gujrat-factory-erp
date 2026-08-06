@@ -5,6 +5,7 @@ import { products, supplierProducts, suppliers } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
 import { createId, withLegacyId } from '../utils/mappers.js'
 import { assertValidWhatsAppContact } from '../utils/phone.js'
+import { getProductIdsForCategories } from './category.service.js'
 
 export async function createSupplier(data: { name: string; contact: string; businessName?: string; address?: string; notes?: string }) {
     const contact = assertValidWhatsAppContact(data.contact, 'Contact')
@@ -128,4 +129,26 @@ export async function linkSupplierProduct(
 
 export async function unlinkSupplierProduct(supplierId: string, productId: string) {
     await db.delete(supplierProducts).where(and(eq(supplierProducts.supplierId, supplierId), eq(supplierProducts.productId, productId)))
+}
+
+export async function linkSupplierProductsByCategories(
+    supplierId: string,
+    categoryIds: string[],
+    data: { supplierSku?: string; unitCost?: number; isPreferred?: boolean } = {}
+) {
+    const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, supplierId)).limit(1)
+    if (!supplier) throw new AppError('Supplier not found', 404)
+
+    const productIds = await getProductIdsForCategories(categoryIds)
+    if (!productIds.length) {
+        throw new AppError('No products found under the selected categories', 400)
+    }
+
+    let linked = 0
+    for (const productId of productIds) {
+        await linkSupplierProduct(supplierId, productId, data)
+        linked += 1
+    }
+
+    return { linked, productIds }
 }

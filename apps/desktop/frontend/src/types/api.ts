@@ -29,16 +29,41 @@ export interface Customer {
     createdAt?: string
 }
 
+export interface Unit {
+    id: string
+    _id: string
+    name: string
+    createdAt?: string
+    updatedAt?: string
+}
+
+export interface Category {
+    id: string
+    _id: string
+    name: string
+    parentId?: string | null
+    sortOrder?: number
+    path?: string
+    children?: Category[]
+    productCount?: number
+    createdAt?: string
+    updatedAt?: string
+}
+
 export interface Product {
     id: string
     _id: string
     name: string
     category: string
+    categoryIds?: string[]
+    categories?: Category[]
     price: number
     stockQty: number
     inStock: boolean
     purchasePrice?: number | null
     discount?: number | null
+    unitId?: string | null
+    unit?: Unit | null
     history?: { purchasePrice: number; qty: number }[]
     productSale?: { sold: number; createdAt: string }[]
 }
@@ -79,6 +104,9 @@ export interface CustomerTransaction {
     type: 'sale' | 'refund' | 'udhar_payment' | string
     amount: number
     description: string
+    paymentMode?: 'cash' | 'online' | string
+    proofImage?: string | null
+    proofImagePublicId?: string | null
     customer?: { id: string; name: string } | null
     createdAt: string
 }
@@ -91,6 +119,9 @@ export interface SupplierTransaction {
     type: 'payment' | 'refund'
     amount: number
     description: string
+    paymentMode?: 'cash' | 'online' | string
+    proofImage?: string | null
+    proofImagePublicId?: string | null
     supplier?: Supplier | null
     createdAt: string
 }
@@ -138,6 +169,7 @@ export interface Supplier {
     businessName?: string | null
     address?: string | null
     notes?: string | null
+    payable?: number
     isActive: boolean
     products?: SupplierProduct[]
 }
@@ -232,4 +264,41 @@ export interface CartLine {
     productId: string
     product: Product
     qty: number
+}
+
+export type ExpenditurePaymentMode = 'cash' | 'online'
+
+export interface MiscellaneousExpenditure {
+    id: string
+    _id: string
+    amount: number
+    paymentMode: ExpenditurePaymentMode
+    note: string
+    proofImage?: string | null
+    proofImagePublicId?: string | null
+    createdById: string
+    createdBy?: User | null
+    createdAt?: string
+    updatedAt?: string
+}
+
+export type KhataParty = 'customer' | 'supplier'
+export type KhataDirection = 'in' | 'out'
+
+export interface KhataEntry {
+    id: string
+    _id: string
+    party: KhataParty
+    direction: KhataDirection
+    partyName: string
+    balanceImpact: string
+    amount: number
+    description: string
+    paymentMode?: ExpenditurePaymentMode | string
+    proofImage?: string | null
+    type: string
+    customerId?: string
+    supplierId?: string
+    remainingBalance?: number
+    createdAt: string
 }

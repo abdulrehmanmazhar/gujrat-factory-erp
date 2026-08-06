@@ -12,6 +12,7 @@ import {
     recordProduction,
     removeLabourRate,
     setLabourRate,
+    setLabourRatesByCategories,
     updateLabourer
 } from '../controllers/labour.controller.js'
 
@@ -21,6 +22,7 @@ router.get('/labourers', isAuthenticated, getLabourers)
 router.get('/labourers/:id', isAuthenticated, getLabourer)
 router.post('/labourers', isAuthenticated, authorizeWrite, createLabourer)
 router.put('/labourers/:id', isAuthenticated, authorizeWrite, updateLabourer)
+router.post('/labourers/:id/rates/by-categories', isAuthenticated, authorizeWrite, setLabourRatesByCategories)
 router.post('/labourers/:id/rates', isAuthenticated, authorizeWrite, setLabourRate)
 router.delete('/labourers/:id/rates/:productId', isAuthenticated, authorizeDelete, removeLabourRate)
 

@@ -1,0 +1,1976 @@
+{
+    "version": "6",
+    "dialect": "sqlite",
+    "id": "920610b3-92c9-4797-bbaa-d4a637a3b9ec",
+    "prevId": "2ffad209-2a44-44d4-8ce4-98a33b3bdd9f",
+    "tables": {
+        "ai_chat_messages": {
+            "name": "ai_chat_messages",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "session_id": {
+                    "name": "session_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "role": {
+                    "name": "role",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "content": {
+                    "name": "content",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "response_json": {
+                    "name": "response_json",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {
+                "ai_chat_messages_session_id_ai_chat_sessions_id_fk": {
+                    "name": "ai_chat_messages_session_id_ai_chat_sessions_id_fk",
+                    "tableFrom": "ai_chat_messages",
+                    "tableTo": "ai_chat_sessions",
+                    "columnsFrom": ["session_id"],
+                    "columnsTo": ["id"],
+                    "onDelete": "cascade",
+                    "onUpdate": "no action"
+                }
+            },
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "ai_chat_sessions": {
+            "name": "ai_chat_sessions",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "user_id": {
+                    "name": "user_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "title": {
+                    "name": "title",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'New chat'"
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "categories": {
+            "name": "categories",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "name": {
+                    "name": "name",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "parent_id": {
+                    "name": "parent_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "sort_order": {
+                    "name": "sort_order",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": 0
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {
+                "categories_parent_name_idx": {
+                    "name": "categories_parent_name_idx",
+                    "columns": ["parent_id", "name"],
+                    "isUnique": true
+                }
+            },
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "customer_transactions": {
+            "name": "customer_transactions",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "customer_id": {
+                    "name": "customer_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "order_id": {
+                    "name": "order_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "type": {
+                    "name": "type",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "amount": {
+                    "name": "amount",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "description": {
+                    "name": "description",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "payment_mode": {
+                    "name": "payment_mode",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'cash'"
+                },
+                "proof_image": {
+                    "name": "proof_image",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "proof_image_public_id": {
+                    "name": "proof_image_public_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "created_by_id": {
+                    "name": "created_by_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "customers": {
+            "name": "customers",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "name": {
+                    "name": "name",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "address": {
+                    "name": "address",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "contact": {
+                    "name": "contact",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "udhar": {
+                    "name": "udhar",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": 0
+                },
+                "created_by_id": {
+                    "name": "created_by_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {
+                "customers_contact_unique": {
+                    "name": "customers_contact_unique",
+                    "columns": ["contact"],
+                    "isUnique": true
+                }
+            },
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "labour_production_consumption": {
+            "name": "labour_production_consumption",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "entry_id": {
+                    "name": "entry_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "product_id": {
+                    "name": "product_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "qty_consumed": {
+                    "name": "qty_consumed",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "labour_production_entries": {
+            "name": "labour_production_entries",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "labourer_id": {
+                    "name": "labourer_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "product_id": {
+                    "name": "product_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "qty_produced": {
+                    "name": "qty_produced",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "rate_per_unit": {
+                    "name": "rate_per_unit",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "total_pay": {
+                    "name": "total_pay",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "recipe_applied": {
+                    "name": "recipe_applied",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": false
+                },
+                "labourer_transaction_id": {
+                    "name": "labourer_transaction_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "notes": {
+                    "name": "notes",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "created_by_id": {
+                    "name": "created_by_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "labour_rates": {
+            "name": "labour_rates",
+            "columns": {
+                "labourer_id": {
+                    "name": "labourer_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "product_id": {
+                    "name": "product_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "rate_per_unit": {
+                    "name": "rate_per_unit",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {
+                "labour_rates_labourer_id_product_id_pk": {
+                    "columns": ["labourer_id", "product_id"],
+                    "name": "labour_rates_labourer_id_product_id_pk"
+                }
+            },
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "labourer_transactions": {
+            "name": "labourer_transactions",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "labourer_id": {
+                    "name": "labourer_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "category": {
+                    "name": "category",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "amount": {
+                    "name": "amount",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "description": {
+                    "name": "description",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_by_id": {
+                    "name": "created_by_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "labourers": {
+            "name": "labourers",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "name": {
+                    "name": "name",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "contact": {
+                    "name": "contact",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "notes": {
+                    "name": "notes",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "is_active": {
+                    "name": "is_active",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": true
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "miscellaneous_expenditures": {
+            "name": "miscellaneous_expenditures",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "amount": {
+                    "name": "amount",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "payment_mode": {
+                    "name": "payment_mode",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'cash'"
+                },
+                "note": {
+                    "name": "note",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "proof_image": {
+                    "name": "proof_image",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "proof_image_public_id": {
+                    "name": "proof_image_public_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "created_by_id": {
+                    "name": "created_by_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "order_items": {
+            "name": "order_items",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "order_id": {
+                    "name": "order_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "product_id": {
+                    "name": "product_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "qty": {
+                    "name": "qty",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "unit_price": {
+                    "name": "unit_price",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "unit_discount": {
+                    "name": "unit_discount",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": 0
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "orders": {
+            "name": "orders",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "customer_id": {
+                    "name": "customer_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "order_number": {
+                    "name": "order_number",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "price": {
+                    "name": "price",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false,
+                    "default": 0
+                },
+                "payment": {
+                    "name": "payment",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "refunded": {
+                    "name": "refunded",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": 0
+                },
+                "discount": {
+                    "name": "discount",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false,
+                    "default": 0
+                },
+                "status": {
+                    "name": "status",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "order_mode": {
+                    "name": "order_mode",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'delayed'"
+                },
+                "stock_deducted": {
+                    "name": "stock_deducted",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": false
+                },
+                "delivery_status": {
+                    "name": "delivery_status",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false,
+                    "default": false
+                },
+                "delivery_date": {
+                    "name": "delivery_date",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "returned_at": {
+                    "name": "returned_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "last_payment_reminder_at": {
+                    "name": "last_payment_reminder_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "message": {
+                    "name": "message",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "created_by_id": {
+                    "name": "created_by_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "product_categories": {
+            "name": "product_categories",
+            "columns": {
+                "product_id": {
+                    "name": "product_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "category_id": {
+                    "name": "category_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {
+                "product_categories_product_id_category_id_pk": {
+                    "columns": ["product_id", "category_id"],
+                    "name": "product_categories_product_id_category_id_pk"
+                }
+            },
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "product_sales": {
+            "name": "product_sales",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "product_id": {
+                    "name": "product_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "customer_id": {
+                    "name": "customer_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "stock_qty_left": {
+                    "name": "stock_qty_left",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "sold": {
+                    "name": "sold",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "product_stock_history": {
+            "name": "product_stock_history",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "product_id": {
+                    "name": "product_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "qty": {
+                    "name": "qty",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "purchase_price": {
+                    "name": "purchase_price",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "restock_order_item_id": {
+                    "name": "restock_order_item_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "recorded_at": {
+                    "name": "recorded_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "products": {
+            "name": "products",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "name": {
+                    "name": "name",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "category": {
+                    "name": "category",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "price": {
+                    "name": "price",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "stock_qty": {
+                    "name": "stock_qty",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": 0
+                },
+                "in_stock": {
+                    "name": "in_stock",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": false
+                },
+                "purchase_price": {
+                    "name": "purchase_price",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "discount": {
+                    "name": "discount",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false,
+                    "default": 0
+                },
+                "unit_id": {
+                    "name": "unit_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'unit-pcs'"
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "recipe_items": {
+            "name": "recipe_items",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "recipe_id": {
+                    "name": "recipe_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "ingredient_product_id": {
+                    "name": "ingredient_product_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "qty": {
+                    "name": "qty",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "recipes": {
+            "name": "recipes",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "output_product_id": {
+                    "name": "output_product_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "notes": {
+                    "name": "notes",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {
+                "recipes_output_product_idx": {
+                    "name": "recipes_output_product_idx",
+                    "columns": ["output_product_id"],
+                    "isUnique": true
+                }
+            },
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "restock_order_items": {
+            "name": "restock_order_items",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "restock_order_id": {
+                    "name": "restock_order_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "product_id": {
+                    "name": "product_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "qty_ordered": {
+                    "name": "qty_ordered",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "qty_received": {
+                    "name": "qty_received",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": 0
+                },
+                "qty_returned": {
+                    "name": "qty_returned",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": 0
+                },
+                "unit_cost": {
+                    "name": "unit_cost",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "line_total": {
+                    "name": "line_total",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "restock_orders": {
+            "name": "restock_orders",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "supplier_id": {
+                    "name": "supplier_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "reference_number": {
+                    "name": "reference_number",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "status": {
+                    "name": "status",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'draft'"
+                },
+                "total_amount": {
+                    "name": "total_amount",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": 0
+                },
+                "amount_paid": {
+                    "name": "amount_paid",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": 0
+                },
+                "amount_refunded": {
+                    "name": "amount_refunded",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": 0
+                },
+                "notes": {
+                    "name": "notes",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "created_by_id": {
+                    "name": "created_by_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "ordered_at": {
+                    "name": "ordered_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "received_at": {
+                    "name": "received_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "supplier_products": {
+            "name": "supplier_products",
+            "columns": {
+                "supplier_id": {
+                    "name": "supplier_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "product_id": {
+                    "name": "product_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "supplier_sku": {
+                    "name": "supplier_sku",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "unit_cost": {
+                    "name": "unit_cost",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "is_preferred": {
+                    "name": "is_preferred",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {
+                "supplier_products_supplier_id_product_id_pk": {
+                    "columns": ["supplier_id", "product_id"],
+                    "name": "supplier_products_supplier_id_product_id_pk"
+                }
+            },
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "supplier_transactions": {
+            "name": "supplier_transactions",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "supplier_id": {
+                    "name": "supplier_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "restock_order_id": {
+                    "name": "restock_order_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "type": {
+                    "name": "type",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "amount": {
+                    "name": "amount",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "description": {
+                    "name": "description",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "payment_mode": {
+                    "name": "payment_mode",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'cash'"
+                },
+                "proof_image": {
+                    "name": "proof_image",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "proof_image_public_id": {
+                    "name": "proof_image_public_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "created_by_id": {
+                    "name": "created_by_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "suppliers": {
+            "name": "suppliers",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "name": {
+                    "name": "name",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "business_name": {
+                    "name": "business_name",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "address": {
+                    "name": "address",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "contact": {
+                    "name": "contact",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "notes": {
+                    "name": "notes",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "payable": {
+                    "name": "payable",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": 0
+                },
+                "is_active": {
+                    "name": "is_active",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": true
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "units": {
+            "name": "units",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "name": {
+                    "name": "name",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {
+                "units_name_unique": {
+                    "name": "units_name_unique",
+                    "columns": ["name"],
+                    "isUnique": true
+                }
+            },
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "user_gemini_api_keys": {
+            "name": "user_gemini_api_keys",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "user_id": {
+                    "name": "user_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "api_key": {
+                    "name": "api_key",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "model": {
+                    "name": "model",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'gemini-2.5-flash'"
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {
+                "user_gemini_api_keys_user_id_unique": {
+                    "name": "user_gemini_api_keys_user_id_unique",
+                    "columns": ["user_id"],
+                    "isUnique": true
+                }
+            },
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "users": {
+            "name": "users",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "name": {
+                    "name": "name",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "contact": {
+                    "name": "contact",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "password": {
+                    "name": "password",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "role": {
+                    "name": "role",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'User'"
+                },
+                "is_verified": {
+                    "name": "is_verified",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": false
+                },
+                "avatar_public_id": {
+                    "name": "avatar_public_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "avatar_url": {
+                    "name": "avatar_url",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {
+                "users_contact_unique": {
+                    "name": "users_contact_unique",
+                    "columns": ["contact"],
+                    "isUnique": true
+                }
+            },
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "whatsapp_queue": {
+            "name": "whatsapp_queue",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "contact": {
+                    "name": "contact",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "kind": {
+                    "name": "kind",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "payload": {
+                    "name": "payload",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "status": {
+                    "name": "status",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'pending'"
+                },
+                "attempts": {
+                    "name": "attempts",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": 0
+                },
+                "last_error": {
+                    "name": "last_error",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        }
+    },
+    "views": {},
+    "enums": {},
+    "_meta": {
+        "schemas": {},
+        "tables": {},
+        "columns": {}
+    },
+    "internal": {
+        "indexes": {}
+    }
+}

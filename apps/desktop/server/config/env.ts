@@ -15,5 +15,6 @@ export const appConfig = {
     PUBLIC_URL: process.env.PUBLIC_URL || '',
     RCLONE_REMOTE: process.env.RCLONE_REMOTE || '',
     RCLONE_BASE_PATH: process.env.RCLONE_BASE_PATH || 'gujrat-factory-erp',
-    RCLONE_CONFIG: process.env.RCLONE_CONFIG || ''
+    RCLONE_CONFIG: process.env.RCLONE_CONFIG || '',
+    GEMINI_MODEL: process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 }

@@ -38,6 +38,17 @@ export const labourApi = apiSlice.injectEndpoints({
             }),
             invalidatesTags: ['Labourers']
         }),
+        setLabourRatesByCategories: builder.mutation<
+            ApiEnvelope<{ labourer: Labourer; updated: number; productIds: string[] }>,
+            { labourerId: string; categoryIds: string[]; ratePerUnit: number }
+        >({
+            query: ({ labourerId, ...body }) => ({
+                url: `/labourers/${labourerId}/rates/by-categories`,
+                method: 'POST',
+                body
+            }),
+            invalidatesTags: ['Labourers']
+        }),
         removeLabourRate: builder.mutation<ApiEnvelope<{ labourer: Labourer }>, { labourerId: string; productId: string }>({
             query: ({ labourerId, productId }) => ({
                 url: `/labourers/${labourerId}/rates/${productId}`,
@@ -85,6 +96,7 @@ export const {
     useCreateLabourerMutation,
     useUpdateLabourerMutation,
     useSetLabourRateMutation,
+    useSetLabourRatesByCategoriesMutation,
     useRemoveLabourRateMutation,
     useGetProductionEntriesQuery,
     useRecordProductionMutation,

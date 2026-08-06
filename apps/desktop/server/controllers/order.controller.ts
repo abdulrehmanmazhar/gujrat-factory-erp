@@ -6,6 +6,8 @@ import { param } from '../utils/params.js'
 import * as orderService from '../services/order.service.js'
 import * as invoiceService from '../services/invoice.service.js'
 import { resolveDocumentLanguage } from '../services/document.service.js'
+import { parsePaymentProofFromBody } from '../utils/paymentMode.js'
+import { proofImageUpload, uploadProofImageFromRequest } from '../utils/proofUpload.js'
 
 export const createCart = CatchAsyncError(async (req: Request, res: Response) => {
     const order = await orderService.createCart(param(req.params.id), req.user!.id, req.body.cart)
@@ -57,29 +59,44 @@ export const getAllOrders = CatchAsyncError(async (req: Request, res: Response) 
     httpResponse(req, res, 200, 'Orders fetched successfully', { orders })
 })
 
-export const addOrderPayment = CatchAsyncError(async (req: Request, res: Response) => {
-    const { payment } = req.body
-    if (typeof payment !== 'number' || isNaN(payment) || payment < 0) {
-        throw new AppError('Order payment must be a valid non-negative number', 400)
-    }
-    const order = await orderService.addOrderPayment(param(req.params.id), payment, req.user!.id)
-    httpResponse(req, res, 200, 'Payment added successfully', { order })
-})
+export const addOrderPayment = [
+    proofImageUpload.single('proofImage'),
+    CatchAsyncError(async (req: Request, res: Response) => {
+        const payment = parseFloat(String(req.body.payment))
+        if (typeof payment !== 'number' || isNaN(payment) || payment < 0) {
+            throw new AppError('Order payment must be a valid non-negative number', 400)
+        }
+        const uploaded = await uploadProofImageFromRequest(req)
+        const proof = parsePaymentProofFromBody(req.body, uploaded)
+        const order = await orderService.addOrderPayment(param(req.params.id), payment, req.user!.id, proof)
+        httpResponse(req, res, 200, 'Payment added successfully', { order })
+    })
+]
 
-export const returnOrder = CatchAsyncError(async (req: Request, res: Response) => {
-    const refundAmount = parseFloat(req.body.refundAmount) || 0
-    const order = await orderService.returnOrder(param(req.params.id), refundAmount, req.user!.id)
-    httpResponse(req, res, 200, 'Order returned successfully', { order })
-})
+export const returnOrder = [
+    proofImageUpload.single('proofImage'),
+    CatchAsyncError(async (req: Request, res: Response) => {
+        const refundAmount = parseFloat(String(req.body.refundAmount)) || 0
+        const uploaded = await uploadProofImageFromRequest(req)
+        const proof = parsePaymentProofFromBody(req.body, uploaded)
+        const order = await orderService.returnOrder(param(req.params.id), refundAmount, req.user!.id, proof)
+        httpResponse(req, res, 200, 'Order returned successfully', { order })
+    })
+]
 
-export const recordOrderRefund = CatchAsyncError(async (req: Request, res: Response) => {
-    const refundAmount = parseFloat(req.body.refundAmount)
-    if (typeof refundAmount !== 'number' || isNaN(refundAmount) || refundAmount <= 0) {
-        throw new AppError('refundAmount must be a positive number', 400)
-    }
-    const order = await orderService.recordOrderRefund(param(req.params.id), refundAmount, req.user!.id, req.body.notes)
-    httpResponse(req, res, 200, 'Refund recorded successfully', { order })
-})
+export const recordOrderRefund = [
+    proofImageUpload.single('proofImage'),
+    CatchAsyncError(async (req: Request, res: Response) => {
+        const refundAmount = parseFloat(String(req.body.refundAmount))
+        if (typeof refundAmount !== 'number' || isNaN(refundAmount) || refundAmount <= 0) {
+            throw new AppError('refundAmount must be a positive number', 400)
+        }
+        const uploaded = await uploadProofImageFromRequest(req)
+        const proof = parsePaymentProofFromBody(req.body, uploaded)
+        const order = await orderService.recordOrderRefund(param(req.params.id), refundAmount, req.user!.id, req.body.notes, proof)
+        httpResponse(req, res, 200, 'Refund recorded successfully', { order })
+    })
+]
 
 export const returnOrderUdhar = CatchAsyncError(async (req: Request, res: Response) => {
     const { payment } = req.body

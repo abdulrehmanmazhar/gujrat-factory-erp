@@ -57,7 +57,14 @@ export const apiSlice = createApi({
         'LabourProduction',
         'LabourerTransactions',
         'Settings',
-        'Analytics'
+        'Analytics',
+        'AiChat',
+        'AiChatSessions',
+        'AiChatSession',
+        'MiscExpenditures',
+        'Units',
+        'Categories',
+        'Khata'
     ],
     endpoints: () => ({})
 })

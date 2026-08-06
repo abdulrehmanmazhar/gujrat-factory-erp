@@ -5,6 +5,8 @@ import { param } from '../utils/params.js'
 import { AppError } from '../utils/errors.js'
 import * as restockService from '../services/restock.service.js'
 import { listSupplierTransactions } from '../services/supplierTransaction.service.js'
+import { parsePaymentProofFromBody } from '../utils/paymentMode.js'
+import { proofImageUpload, uploadProofImageFromRequest } from '../utils/proofUpload.js'
 
 export const createRestockOrder = CatchAsyncError(async (req: Request, res: Response) => {
     const order = await restockService.createRestockOrder(req.body.supplierId, req.user!.id, req.body.items, req.body.notes, req.body.referenceNumber)
@@ -52,25 +54,49 @@ export const getSupplierTransactions = CatchAsyncError(async (req: Request, res:
     httpResponse(req, res, 200, 'Supplier transactions fetched successfully', { transactions })
 })
 
-export const recordRestockPayment = CatchAsyncError(async (req: Request, res: Response) => {
-    const amount = parseFloat(req.body.amount)
-    if (typeof amount !== 'number' || isNaN(amount) || amount <= 0) {
-        throw new AppError('amount must be a positive number', 400)
-    }
-    const order = await restockService.recordRestockPayment(param(req.params.id), amount, req.user!.id, req.body.notes)
-    httpResponse(req, res, 200, 'Restock payment recorded successfully', { order })
-})
+export const recordRestockPayment = [
+    proofImageUpload.single('proofImage'),
+    CatchAsyncError(async (req: Request, res: Response) => {
+        const amount = parseFloat(String(req.body.amount))
+        if (typeof amount !== 'number' || isNaN(amount) || amount <= 0) {
+            throw new AppError('amount must be a positive number', 400)
+        }
+        const uploaded = await uploadProofImageFromRequest(req)
+        const proof = parsePaymentProofFromBody(req.body, uploaded)
+        const order = await restockService.recordRestockPayment(param(req.params.id), amount, req.user!.id, req.body.notes, proof)
+        httpResponse(req, res, 200, 'Restock payment recorded successfully', { order })
+    })
+]
 
-export const recordRestockRefund = CatchAsyncError(async (req: Request, res: Response) => {
-    const returnedItems = req.body.returnedItems as { itemId: string; qtyReturned: number }[] | undefined
-    if (!Array.isArray(returnedItems) || !returnedItems.length) {
-        throw new AppError('returnedItems array is required', 400)
-    }
-    const requestedCashRefund =
-        req.body.amount !== undefined && req.body.amount !== null && req.body.amount !== '' ? parseFloat(req.body.amount) : undefined
-    if (requestedCashRefund !== undefined && (typeof requestedCashRefund !== 'number' || Number.isNaN(requestedCashRefund))) {
-        throw new AppError('amount must be a valid number when provided', 400)
-    }
-    const order = await restockService.recordRestockRefund(param(req.params.id), req.user!.id, req.body.notes, returnedItems, requestedCashRefund)
-    httpResponse(req, res, 200, 'Restock refund recorded successfully', { order })
-})
+export const recordRestockRefund = [
+    proofImageUpload.single('proofImage'),
+    CatchAsyncError(async (req: Request, res: Response) => {
+        let returnedItems = req.body.returnedItems as { itemId: string; qtyReturned: number }[] | string | undefined
+        if (typeof returnedItems === 'string') {
+            try {
+                returnedItems = JSON.parse(returnedItems) as { itemId: string; qtyReturned: number }[]
+            } catch {
+                throw new AppError('returnedItems must be valid JSON', 400)
+            }
+        }
+        if (!Array.isArray(returnedItems) || !returnedItems.length) {
+            throw new AppError('returnedItems array is required', 400)
+        }
+        const requestedCashRefund =
+            req.body.amount !== undefined && req.body.amount !== null && req.body.amount !== '' ? parseFloat(String(req.body.amount)) : undefined
+        if (requestedCashRefund !== undefined && (typeof requestedCashRefund !== 'number' || Number.isNaN(requestedCashRefund))) {
+            throw new AppError('amount must be a valid number when provided', 400)
+        }
+        const uploaded = await uploadProofImageFromRequest(req)
+        const proof = parsePaymentProofFromBody(req.body, uploaded)
+        const order = await restockService.recordRestockRefund(
+            param(req.params.id),
+            req.user!.id,
+            req.body.notes,
+            returnedItems,
+            requestedCashRefund,
+            proof
+        )
+        httpResponse(req, res, 200, 'Restock refund recorded successfully', { order })
+    })
+]

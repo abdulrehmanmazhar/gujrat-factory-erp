@@ -14,6 +14,10 @@ import '@/redux/api/labourApi'
 import '@/redux/api/backupApi'
 import '@/redux/api/settingsApi'
 import '@/redux/api/analyticsApi'
+import '@/redux/api/aiApi'
+import '@/redux/api/miscExpenditureApi'
+import '@/redux/api/categoriesApi'
+import '@/redux/api/khataApi'
 
 export const store = configureStore({
     reducer: {

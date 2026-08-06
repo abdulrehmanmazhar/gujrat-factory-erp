@@ -14,7 +14,9 @@ export async function createCustomerTransaction(data: {
     description: string
     createdById: string
     orderId?: string
+    paymentMode?: string
     proofImage?: string
+    proofImagePublicId?: string
 }) {
     const [transaction] = await db
         .insert(customerTransactions)
@@ -26,7 +28,9 @@ export async function createCustomerTransaction(data: {
             amount: data.amount,
             description: data.description,
             createdById: data.createdById,
-            proofImage: data.proofImage
+            paymentMode: data.paymentMode ?? 'cash',
+            proofImage: data.proofImage,
+            proofImagePublicId: data.proofImagePublicId
         })
         .returning()
 

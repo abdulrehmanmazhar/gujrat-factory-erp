@@ -67,23 +67,40 @@ export const restockApi = apiSlice.injectEndpoints({
             query: (id) => ({ url: `/restock-orders/${id}`, method: 'DELETE' }),
             invalidatesTags: ['RestockOrders']
         }),
-        recordRestockPayment: builder.mutation<ApiEnvelope<{ order: RestockOrder }>, { id: string; amount: number; notes?: string }>({
-            query: ({ id, amount, notes }) => ({
-                url: `/restock-orders/${id}/payments`,
-                method: 'POST',
-                body: { amount, notes }
-            }),
+        recordRestockPayment: builder.mutation<
+            ApiEnvelope<{ order: RestockOrder }>,
+            { id: string; amount: number; notes?: string; paymentMode: 'cash' | 'online'; proofImage?: File | null }
+        >({
+            query: ({ id, amount, notes, paymentMode, proofImage }) => {
+                const body = new FormData()
+                body.append('amount', String(amount))
+                body.append('paymentMode', paymentMode)
+                if (notes) body.append('notes', notes)
+                if (proofImage) body.append('proofImage', proofImage)
+                return { url: `/restock-orders/${id}/payments`, method: 'POST', body }
+            },
             invalidatesTags: [...RESTOCK_MUTATION_TAGS]
         }),
         recordRestockRefund: builder.mutation<
             ApiEnvelope<{ order: RestockOrder }>,
-            { id: string; returnedItems: { itemId: string; qtyReturned: number }[]; amount?: number; notes?: string }
+            {
+                id: string
+                returnedItems: { itemId: string; qtyReturned: number }[]
+                amount?: number
+                notes?: string
+                paymentMode: 'cash' | 'online'
+                proofImage?: File | null
+            }
         >({
-            query: ({ id, amount, notes, returnedItems }) => ({
-                url: `/restock-orders/${id}/refunds`,
-                method: 'POST',
-                body: { returnedItems, ...(amount !== undefined ? { amount } : {}), notes }
-            }),
+            query: ({ id, amount, notes, returnedItems, paymentMode, proofImage }) => {
+                const body = new FormData()
+                body.append('returnedItems', JSON.stringify(returnedItems))
+                body.append('paymentMode', paymentMode)
+                if (amount !== undefined) body.append('amount', String(amount))
+                if (notes) body.append('notes', notes)
+                if (proofImage) body.append('proofImage', proofImage)
+                return { url: `/restock-orders/${id}/refunds`, method: 'POST', body }
+            },
             invalidatesTags: [...RESTOCK_MUTATION_TAGS]
         })
     })

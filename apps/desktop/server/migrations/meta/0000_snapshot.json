@@ -1,9 +1,120 @@
 {
     "version": "6",
     "dialect": "sqlite",
-    "id": "6e81fa7d-5534-437f-8973-dd68d91f2078",
+    "id": "5014e1f1-90e3-436a-9d10-d07190c015d0",
     "prevId": "00000000-0000-0000-0000-000000000000",
     "tables": {
+        "ai_chat_messages": {
+            "name": "ai_chat_messages",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "session_id": {
+                    "name": "session_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "role": {
+                    "name": "role",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "content": {
+                    "name": "content",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "response_json": {
+                    "name": "response_json",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {
+                "ai_chat_messages_session_id_ai_chat_sessions_id_fk": {
+                    "name": "ai_chat_messages_session_id_ai_chat_sessions_id_fk",
+                    "tableFrom": "ai_chat_messages",
+                    "tableTo": "ai_chat_sessions",
+                    "columnsFrom": ["session_id"],
+                    "columnsTo": ["id"],
+                    "onDelete": "cascade",
+                    "onUpdate": "no action"
+                }
+            },
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "ai_chat_sessions": {
+            "name": "ai_chat_sessions",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "user_id": {
+                    "name": "user_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "title": {
+                    "name": "title",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'New chat'"
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
         "customer_transactions": {
             "name": "customer_transactions",
             "columns": {
@@ -49,8 +160,23 @@
                     "notNull": true,
                     "autoincrement": false
                 },
+                "payment_mode": {
+                    "name": "payment_mode",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'cash'"
+                },
                 "proof_image": {
                     "name": "proof_image",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "proof_image_public_id": {
+                    "name": "proof_image_public_id",
                     "type": "text",
                     "primaryKey": false,
                     "notNull": false,
@@ -93,13 +219,6 @@
                     "type": "text",
                     "primaryKey": false,
                     "notNull": true,
-                    "autoincrement": false
-                },
-                "business_name": {
-                    "name": "business_name",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
                     "autoincrement": false
                 },
                 "address": {
@@ -469,6 +588,82 @@
             "uniqueConstraints": {},
             "checkConstraints": {}
         },
+        "miscellaneous_expenditures": {
+            "name": "miscellaneous_expenditures",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "amount": {
+                    "name": "amount",
+                    "type": "real",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "payment_mode": {
+                    "name": "payment_mode",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'cash'"
+                },
+                "note": {
+                    "name": "note",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "proof_image": {
+                    "name": "proof_image",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "proof_image_public_id": {
+                    "name": "proof_image_public_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "created_by_id": {
+                    "name": "created_by_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
         "order_items": {
             "name": "order_items",
             "columns": {
@@ -625,6 +820,13 @@
                 },
                 "returned_at": {
                     "name": "returned_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "last_payment_reminder_at": {
+                    "name": "last_payment_reminder_at",
                     "type": "integer",
                     "primaryKey": false,
                     "notNull": false,
@@ -842,6 +1044,14 @@
                     "notNull": false,
                     "autoincrement": false,
                     "default": 0
+                },
+                "unit_id": {
+                    "name": "unit_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'unit-pcs'"
                 },
                 "created_at": {
                     "name": "created_at",
@@ -1252,6 +1462,28 @@
                     "notNull": true,
                     "autoincrement": false
                 },
+                "payment_mode": {
+                    "name": "payment_mode",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'cash'"
+                },
+                "proof_image": {
+                    "name": "proof_image",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "proof_image_public_id": {
+                    "name": "proof_image_public_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
                 "created_by_id": {
                     "name": "created_by_id",
                     "type": "text",
@@ -1345,6 +1577,113 @@
                 }
             },
             "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "units": {
+            "name": "units",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "name": {
+                    "name": "name",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {
+                "units_name_unique": {
+                    "name": "units_name_unique",
+                    "columns": ["name"],
+                    "isUnique": true
+                }
+            },
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "user_gemini_api_keys": {
+            "name": "user_gemini_api_keys",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "user_id": {
+                    "name": "user_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "api_key": {
+                    "name": "api_key",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "model": {
+                    "name": "model",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "'gemini-2.5-flash'"
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false,
+                    "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+                }
+            },
+            "indexes": {
+                "user_gemini_api_keys_user_id_unique": {
+                    "name": "user_gemini_api_keys_user_id_unique",
+                    "columns": ["user_id"],
+                    "isUnique": true
+                }
+            },
             "foreignKeys": {},
             "compositePrimaryKeys": {},
             "uniqueConstraints": {},

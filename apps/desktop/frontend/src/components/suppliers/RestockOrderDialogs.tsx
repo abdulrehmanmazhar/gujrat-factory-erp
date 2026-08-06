@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { PaymentProofFields, usePaymentProofFields } from '@/components/shared/PaymentProofFields'
 import { getApiErrorMessage } from '@/lib/errors'
 import {
     useCancelRestockOrderMutation,
@@ -153,6 +154,7 @@ export function RestockPaymentDialog({
     const [amount, setAmount] = useState('')
     const [notes, setNotes] = useState('')
     const [recordPayment, { isLoading }] = useRecordRestockPaymentMutation()
+    const { paymentMode, setPaymentMode, proofImage, setProofImage } = usePaymentProofFields(open)
 
     useEffect(() => {
         setAmount('')
@@ -178,7 +180,9 @@ export function RestockPaymentDialog({
             await recordPayment({
                 id: order.id ?? order._id,
                 amount: value,
-                notes: notes.trim() || undefined
+                notes: notes.trim() || undefined,
+                paymentMode,
+                proofImage
             }).unwrap()
             toast.success('Payment recorded')
             onSuccess()
@@ -222,6 +226,12 @@ export function RestockPaymentDialog({
                             onChange={(e) => setNotes(e.target.value)}
                         />
                     </div>
+                    <PaymentProofFields
+                        paymentMode={paymentMode}
+                        onPaymentModeChange={setPaymentMode}
+                        proofImage={proofImage}
+                        onProofImageChange={setProofImage}
+                    />
                     <Button
                         type="submit"
                         disabled={isLoading}>
@@ -248,6 +258,7 @@ export function RestockRefundDialog({
     const [cashRefund, setCashRefund] = useState('')
     const [notes, setNotes] = useState('')
     const [recordRefund, { isLoading }] = useRecordRestockRefundMutation()
+    const { paymentMode, setPaymentMode, proofImage, setProofImage } = usePaymentProofFields(open)
 
     useEffect(() => {
         setNotes('')
@@ -270,6 +281,8 @@ export function RestockRefundDialog({
     }, [order, qtyByItem])
 
     const maxCashRefund = order ? estimateMaxCashRefund(order, returnTotal) : 0
+    const cashAmountValue = cashRefund === '' ? 0 : Number(cashRefund)
+    const showProof = maxCashRefund > 0 && cashAmountValue > 0
 
     useEffect(() => {
         if (!open) return
@@ -317,7 +330,9 @@ export function RestockRefundDialog({
                 id: order.id ?? order._id,
                 returnedItems,
                 amount: cashAmount,
-                notes: notes.trim() || undefined
+                notes: notes.trim() || undefined,
+                paymentMode,
+                proofImage: cashAmount && cashAmount > 0 ? proofImage : null
             }).unwrap()
             toast.success(maxCashRefund > 0 ? 'Stock returned and supplier refund recorded' : 'Stock returned — order balance reduced')
             onSuccess()
@@ -411,6 +426,14 @@ export function RestockRefundDialog({
                             onChange={(e) => setNotes(e.target.value)}
                         />
                     </div>
+                    <PaymentProofFields
+                        paymentMode={paymentMode}
+                        onPaymentModeChange={setPaymentMode}
+                        proofImage={proofImage}
+                        onProofImageChange={setProofImage}
+                        showWhen={showProof}
+                        modeLabel="Refund mode"
+                    />
                     <Button
                         type="submit"
                         disabled={isLoading || returnTotal <= 0}>

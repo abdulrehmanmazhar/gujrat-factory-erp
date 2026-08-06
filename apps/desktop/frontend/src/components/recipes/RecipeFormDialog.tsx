@@ -146,22 +146,24 @@ export function RecipeFormDialog({
 
                     <div className="space-y-2 rounded-lg border p-3">
                         <Label>Ingredients consumed</Label>
-                        {items.map((line) => (
-                            <div
-                                key={line.ingredientProductId}
-                                className="flex items-center justify-between text-sm">
-                                <span>
-                                    {line.name ?? line.ingredientProductId} × {line.qty}
-                                </span>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => setItems((prev) => prev.filter((l) => l.ingredientProductId !== line.ingredientProductId))}>
-                                    <Trash2 className="size-4 text-destructive" />
-                                </Button>
-                            </div>
-                        ))}
+                        <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+                            {items.map((line) => (
+                                <div
+                                    key={line.ingredientProductId}
+                                    className="flex items-center justify-between text-sm">
+                                    <span>
+                                        {line.name ?? line.ingredientProductId} × {line.qty}
+                                    </span>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => setItems((prev) => prev.filter((l) => l.ingredientProductId !== line.ingredientProductId))}>
+                                        <Trash2 className="size-4 text-destructive" />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
                         <div className="flex gap-2">
                             <Select
                                 value={addIngId}

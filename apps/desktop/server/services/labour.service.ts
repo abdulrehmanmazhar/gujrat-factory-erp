@@ -7,6 +7,7 @@ import { createId, withLegacyId } from '../utils/mappers.js'
 import { assertValidWhatsAppContact } from '../utils/phone.js'
 import { adjustInventoryQty } from './product.service.js'
 import { getRecipeByOutputProduct } from './recipe.service.js'
+import { getProductIdsForCategories } from './category.service.js'
 
 export const MANUAL_LABOUR_CATEGORIES = ['advance', 'bonus', 'expense', 'other'] as const
 export type ManualLabourCategory = (typeof MANUAL_LABOUR_CATEGORIES)[number]
@@ -113,7 +114,9 @@ export async function getLabourer(id: string) {
 }
 
 export async function setLabourRate(labourerId: string, productId: string, ratePerUnit: number) {
-    if (ratePerUnit < 0) throw new AppError('Rate must be non-negative', 400)
+    if (!Number.isFinite(ratePerUnit) || ratePerUnit < 0) {
+        throw new AppError('Rate must be a non-negative number', 400)
+    }
 
     const [labourer] = await db.select().from(labourers).where(eq(labourers.id, labourerId)).limit(1)
     if (!labourer) throw new AppError('Labourer not found', 404)
@@ -130,6 +133,36 @@ export async function setLabourRate(labourerId: string, productId: string, rateP
         })
 
     return getLabourer(labourerId)
+}
+
+export async function setLabourRatesByCategories(labourerId: string, categoryIds: string[], ratePerUnit: number) {
+    if (!Number.isFinite(ratePerUnit) || ratePerUnit < 0) {
+        throw new AppError('Rate must be a non-negative number', 400)
+    }
+
+    const [labourer] = await db.select().from(labourers).where(eq(labourers.id, labourerId)).limit(1)
+    if (!labourer) throw new AppError('Labourer not found', 404)
+
+    const productIds = await getProductIdsForCategories(categoryIds)
+    if (!productIds.length) {
+        throw new AppError('No products found under the selected categories', 400)
+    }
+
+    for (const productId of productIds) {
+        await db
+            .insert(labourRates)
+            .values({ labourerId, productId, ratePerUnit })
+            .onConflictDoUpdate({
+                target: [labourRates.labourerId, labourRates.productId],
+                set: { ratePerUnit, updatedAt: new Date() }
+            })
+    }
+
+    return {
+        labourer: await getLabourer(labourerId),
+        updated: productIds.length,
+        productIds
+    }
 }
 
 export async function removeLabourRate(labourerId: string, productId: string) {

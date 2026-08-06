@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { PaymentProofFields, usePaymentProofFields } from '@/components/shared/PaymentProofFields'
 import { useAddOrderPaymentMutation, useCancelOrderMutation, useRecordOrderRefundMutation, useReturnOrderMutation } from '@/redux/api/ordersApi'
 import type { Order } from '@/types/api'
 import { getApiErrorMessage } from '@/lib/errors'
@@ -106,6 +107,7 @@ export function PaymentDialog({
 }) {
     const [payment, setPayment] = useState('')
     const [addPayment, { isLoading: paying }] = useAddOrderPaymentMutation()
+    const { paymentMode, setPaymentMode, proofImage, setProofImage } = usePaymentProofFields(open)
 
     useEffect(() => {
         setPayment('')
@@ -128,7 +130,7 @@ export function PaymentDialog({
         }
         try {
             const id = order.id ?? order._id
-            await addPayment({ id, payment: amount }).unwrap()
+            await addPayment({ id, payment: amount, paymentMode, proofImage }).unwrap()
             toast.success('Payment recorded')
             onSuccess()
         } catch (err) {
@@ -161,6 +163,12 @@ export function PaymentDialog({
                             required
                         />
                     </div>
+                    <PaymentProofFields
+                        paymentMode={paymentMode}
+                        onPaymentModeChange={setPaymentMode}
+                        proofImage={proofImage}
+                        onProofImageChange={setProofImage}
+                    />
                     <Button
                         type="submit"
                         disabled={paying}>
@@ -186,6 +194,7 @@ export function RefundOrderDialog({
     const [refundAmount, setRefundAmount] = useState('')
     const [notes, setNotes] = useState('')
     const [recordRefund, { isLoading }] = useRecordOrderRefundMutation()
+    const { paymentMode, setPaymentMode, proofImage, setProofImage } = usePaymentProofFields(open)
 
     useEffect(() => {
         setRefundAmount('')
@@ -211,7 +220,9 @@ export function RefundOrderDialog({
             await recordRefund({
                 id: order.id ?? order._id,
                 refundAmount: amount,
-                notes: notes.trim() || undefined
+                notes: notes.trim() || undefined,
+                paymentMode,
+                proofImage
             }).unwrap()
             toast.success('Refund recorded')
             onSuccess()
@@ -256,6 +267,13 @@ export function RefundOrderDialog({
                             placeholder="e.g. partial refund installment"
                         />
                     </div>
+                    <PaymentProofFields
+                        paymentMode={paymentMode}
+                        onPaymentModeChange={setPaymentMode}
+                        proofImage={proofImage}
+                        onProofImageChange={setProofImage}
+                        modeLabel="Refund mode"
+                    />
                     <Button
                         type="submit"
                         disabled={isLoading || refundable <= 0}>
@@ -280,6 +298,7 @@ export function ReturnOrderDialog({
 }) {
     const [refundAmount, setRefundAmount] = useState('')
     const [returnOrder, { isLoading }] = useReturnOrderMutation()
+    const { paymentMode, setPaymentMode, proofImage, setProofImage } = usePaymentProofFields(open)
 
     useEffect(() => {
         setRefundAmount('')
@@ -288,6 +307,8 @@ export function ReturnOrderDialog({
     if (!order) return null
 
     const refundable = orderRefundable(order)
+    const refundValue = refundAmount === '' ? 0 : Number(refundAmount)
+    const showProof = refundValue > 0
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -301,7 +322,12 @@ export function ReturnOrderDialog({
             return
         }
         try {
-            await returnOrder({ id: order.id ?? order._id, refundAmount: amount }).unwrap()
+            await returnOrder({
+                id: order.id ?? order._id,
+                refundAmount: amount,
+                paymentMode,
+                proofImage: amount > 0 ? proofImage : null
+            }).unwrap()
             toast.success('Order returned')
             onSuccess()
         } catch (err) {
@@ -335,6 +361,14 @@ export function ReturnOrderDialog({
                             placeholder="0"
                         />
                     </div>
+                    <PaymentProofFields
+                        paymentMode={paymentMode}
+                        onPaymentModeChange={setPaymentMode}
+                        proofImage={proofImage}
+                        onProofImageChange={setProofImage}
+                        showWhen={showProof}
+                        modeLabel="Refund mode"
+                    />
                     <Button
                         type="submit"
                         disabled={isLoading}>
