@@ -8,6 +8,7 @@ import * as invoiceService from '../services/invoice.service.js'
 import { resolveDocumentLanguage } from '../services/document.service.js'
 import { parsePaymentProofFromBody } from '../utils/paymentMode.js'
 import { proofImageUpload, uploadProofImageFromRequest } from '../utils/proofUpload.js'
+import { resolveAdditionalCharges, resolveAdditionalDiscounts } from '../utils/labelledAmounts.js'
 
 export const createCart = CatchAsyncError(async (req: Request, res: Response) => {
     const order = await orderService.createCart(param(req.params.id), req.user!.id, req.body.cart)
@@ -15,13 +16,18 @@ export const createCart = CatchAsyncError(async (req: Request, res: Response) =>
 })
 
 export const createOrder = CatchAsyncError(async (req: Request, res: Response) => {
+    const additionalDiscounts = resolveAdditionalDiscounts(req.body)
+    const additionalCharges = resolveAdditionalCharges(req.body)
+    const invoiceBreakdown = req.body.invoiceBreakdown === false || req.body.invoiceBreakdown === 'false' ? false : true
     const result = await orderService.createOrder(
         param(req.params.id),
         req.user!.id,
         req.body.cart,
         req.body.deliveryDate,
         req.body.message,
-        parseFloat(req.body.additionalDiscount) || 0,
+        additionalDiscounts,
+        additionalCharges,
+        invoiceBreakdown,
         req.body.orderMode === 'pos' ? 'pos' : 'delayed',
         parseFloat(req.body.payment) || 0
     )
@@ -34,7 +40,17 @@ export const deleteCart = CatchAsyncError(async (req: Request, res: Response) =>
 })
 
 export const addOrder = CatchAsyncError(async (req: Request, res: Response) => {
-    const result = await orderService.addOrder(param(req.params.id), req.body.deliveryDate, req.body.message, req.body.additionalDiscount || 0)
+    const additionalDiscounts = resolveAdditionalDiscounts(req.body)
+    const additionalCharges = resolveAdditionalCharges(req.body)
+    const invoiceBreakdown = req.body.invoiceBreakdown === false || req.body.invoiceBreakdown === 'false' ? false : true
+    const result = await orderService.addOrder(
+        param(req.params.id),
+        req.body.deliveryDate,
+        req.body.message,
+        additionalDiscounts,
+        additionalCharges,
+        invoiceBreakdown
+    )
     httpResponse(req, res, 200, result.message, null)
 })
 

@@ -64,7 +64,8 @@ export const apiSlice = createApi({
         'MiscExpenditures',
         'Units',
         'Categories',
-        'Khata'
+        'Khata',
+        'Conversions'
     ],
     endpoints: () => ({})
 })

@@ -16,7 +16,7 @@ import { FileDown } from 'lucide-react'
 import { toast } from 'sonner'
 
 function orderPayable(order: Order) {
-    return Math.max(0, (order.price ?? 0) - (order.discount ?? 0))
+    return Math.max(0, (order.price ?? 0) + (order.charges ?? 0) - (order.discount ?? 0))
 }
 
 function orderOutstanding(order: Order) {

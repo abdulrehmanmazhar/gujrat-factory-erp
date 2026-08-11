@@ -26,6 +26,7 @@ import miscExpenditureRouter from './routes/miscExpenditure.route.js'
 import unitRouter from './routes/unit.route.js'
 import categoryRouter from './routes/category.route.js'
 import khataRouter from './routes/khata.route.js'
+import conversionRouter from './routes/conversion.route.js'
 
 export const app = express()
 
@@ -60,6 +61,7 @@ app.use('/api/v1', miscExpenditureRouter)
 app.use('/api/v1', unitRouter)
 app.use('/api/v1', categoryRouter)
 app.use('/api/v1', khataRouter)
+app.use('/api/v1', conversionRouter)
 
 app.get('/test', (_req, res) => {
     res.status(200).json({

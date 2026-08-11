@@ -38,6 +38,7 @@ import {
     Truck,
     UserCircle,
     Users,
+    ArrowRightLeft,
     UsersRound
 } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
@@ -60,6 +61,7 @@ const navItems = [
     { to: '/suppliers', labelKey: 'suppliers' as const, icon: Truck, adminOnly: true },
     { to: '/restock-orders', labelKey: 'restockOrders' as const, icon: ClipboardList, adminOnly: true },
     { to: '/recipes', labelKey: 'recipes' as const, icon: ChefHat, adminOnly: true },
+    { to: '/conversions', labelKey: 'conversions' as const, icon: ArrowRightLeft, adminOnly: true },
     { to: '/labour', labelKey: 'labour' as const, icon: HardHat, adminOnly: true },
     { to: '/miscellaneous-expenditure', labelKey: 'miscExpenditure' as const, icon: Receipt, adminOnly: true },
     { to: '/khata', labelKey: 'khata' as const, icon: BookOpen, adminOnly: true },

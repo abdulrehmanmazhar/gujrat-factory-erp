@@ -71,6 +71,13 @@ export interface Product {
 export interface OrderItem {
     product: Product
     qty: number
+    unitPrice?: number
+    unitDiscount?: number
+}
+
+export type LabelledAmount = {
+    description: string
+    amount: string | number
 }
 
 export interface Order {
@@ -85,6 +92,10 @@ export interface Order {
     payment?: number | null
     refunded?: number | null
     discount?: number | null
+    charges?: number | null
+    additionalCharges?: { description: string; amount: number }[]
+    additionalDiscounts?: { description: string; amount: number }[]
+    invoiceBreakdown?: boolean
     status?: string | null
     deliveryStatus?: boolean | null
     deliveryDate?: string | null
@@ -221,6 +232,22 @@ export interface Recipe {
     items?: RecipeItem[]
 }
 
+export interface ProductConversion {
+    id: string
+    _id: string
+    inputProductId: string
+    outputProductId: string
+    inputRatio: number
+    outputRatio: number
+    inputQty: number
+    outputQty: number
+    notes?: string | null
+    createdAt?: string
+    inputProduct?: Product | null
+    outputProduct?: Product | null
+    createdByUser?: { id?: string; name?: string; contact?: string } | null
+}
+
 export interface LabourRate {
     productId: string
     ratePerUnit: number
@@ -268,12 +295,22 @@ export interface CartLine {
 
 export type ExpenditurePaymentMode = 'cash' | 'online'
 
+export interface MiscExpenditureCategory {
+    id: string
+    _id: string
+    name: string
+    createdAt?: string
+    updatedAt?: string
+}
+
 export interface MiscellaneousExpenditure {
     id: string
     _id: string
     amount: number
     paymentMode: ExpenditurePaymentMode
     note: string
+    categoryId?: string | null
+    category?: Pick<MiscExpenditureCategory, 'id' | '_id' | 'name'> | null
     proofImage?: string | null
     proofImagePublicId?: string | null
     createdById: string

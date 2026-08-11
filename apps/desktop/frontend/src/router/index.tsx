@@ -11,6 +11,7 @@ import OrdersPage from '@/pages/OrdersPage'
 import SuppliersPage from '@/pages/SuppliersPage'
 import RestockOrdersPage from '@/pages/RestockOrdersPage'
 import RecipesPage from '@/pages/RecipesPage'
+import ConversionPage from '@/pages/ConversionPage'
 import LabourPage from '@/pages/LabourPage'
 import PosPage from '@/pages/PosPage'
 import DelayedOrderPage from '@/pages/DelayedOrderPage'
@@ -87,6 +88,14 @@ export default function Router() {
                     element={
                         <RequireWrite>
                             <RecipesPage />
+                        </RequireWrite>
+                    }
+                />
+                <Route
+                    path="conversions"
+                    element={
+                        <RequireWrite>
+                            <ConversionPage />
                         </RequireWrite>
                     }
                 />

@@ -13,6 +13,16 @@ function assertPaymentMode(value: string): PaymentMode {
     return value as PaymentMode
 }
 
+function mapCategory(row: Record<string, unknown>) {
+    return {
+        id: String(row.id),
+        _id: String(row.id),
+        name: String(row.name),
+        createdAt: new Date(Number(row.created_at)).toISOString(),
+        updatedAt: new Date(Number(row.updated_at)).toISOString()
+    }
+}
+
 async function getExpenditureWithCreator(id: string) {
     const client = getClient()
     const result = await client.execute({
@@ -22,16 +32,20 @@ async function getExpenditureWithCreator(id: string) {
                 e.amount,
                 e.payment_mode,
                 e.note,
+                e.category_id,
                 e.proof_image,
                 e.proof_image_public_id,
                 e.created_by_id,
                 e.created_at,
                 e.updated_at,
+                c.id AS category_row_id,
+                c.name AS category_name,
                 u.id AS creator_id,
                 u.name AS creator_name,
                 u.contact AS creator_contact,
                 u.role AS creator_role
             FROM miscellaneous_expenditures e
+            LEFT JOIN misc_expenditure_categories c ON c.id = e.category_id
             LEFT JOIN users u ON u.id = e.created_by_id
             WHERE e.id = ?
             LIMIT 1
@@ -48,6 +62,14 @@ async function getExpenditureWithCreator(id: string) {
         amount: Number(row.amount),
         paymentMode: String(row.payment_mode) as PaymentMode,
         note: String(row.note),
+        categoryId: row.category_id ? String(row.category_id) : null,
+        category: row.category_row_id
+            ? {
+                  id: String(row.category_row_id),
+                  _id: String(row.category_row_id),
+                  name: String(row.category_name)
+              }
+            : null,
         proofImage: row.proof_image ? String(row.proof_image) : null,
         proofImagePublicId: row.proof_image_public_id ? String(row.proof_image_public_id) : null,
         createdById: String(row.created_by_id),
@@ -64,6 +86,44 @@ async function getExpenditureWithCreator(id: string) {
               }
             : null
     }
+}
+
+export async function listMiscExpenditureCategories() {
+    const result = await getClient().execute({
+        sql: `
+            SELECT id, name, created_at, updated_at
+            FROM misc_expenditure_categories
+            ORDER BY name COLLATE NOCASE ASC
+        `
+    })
+    return result.rows.map((row) => mapCategory(row as unknown as Record<string, unknown>))
+}
+
+export async function createMiscExpenditureCategory(name: string) {
+    const trimmed = name.trim()
+    if (!trimmed) throw new AppError('Category name is required', 400)
+
+    const existing = await getClient().execute({
+        sql: `SELECT id FROM misc_expenditure_categories WHERE lower(name) = lower(?) LIMIT 1`,
+        args: [trimmed]
+    })
+    if (existing.rows[0]) throw new AppError('A category with this name already exists', 400)
+
+    const id = createId()
+    const now = Date.now()
+    await getClient().execute({
+        sql: `
+            INSERT INTO misc_expenditure_categories (id, name, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+        `,
+        args: [id, trimmed, now, now]
+    })
+
+    const created = await getClient().execute({
+        sql: `SELECT id, name, created_at, updated_at FROM misc_expenditure_categories WHERE id = ? LIMIT 1`,
+        args: [id]
+    })
+    return mapCategory(created.rows[0] as unknown as Record<string, unknown>)
 }
 
 export async function listMiscellaneousExpenditures() {
@@ -85,6 +145,7 @@ export async function createMiscellaneousExpenditure(data: {
     amount: number
     paymentMode: string
     note: string
+    categoryId: string
     proofImage?: string
     proofImagePublicId?: string
     createdById: string
@@ -99,6 +160,15 @@ export async function createMiscellaneousExpenditure(data: {
         throw new AppError('Note is required', 400)
     }
 
+    const categoryId = String(data.categoryId ?? '').trim()
+    if (!categoryId) throw new AppError('Category is required', 400)
+
+    const category = await getClient().execute({
+        sql: `SELECT id FROM misc_expenditure_categories WHERE id = ? LIMIT 1`,
+        args: [categoryId]
+    })
+    if (!category.rows[0]) throw new AppError('Category not found', 400)
+
     const paymentMode = assertPaymentMode(data.paymentMode)
     const id = createId()
     const now = Date.now()
@@ -106,10 +176,10 @@ export async function createMiscellaneousExpenditure(data: {
     await getClient().execute({
         sql: `
             INSERT INTO miscellaneous_expenditures
-            (id, amount, payment_mode, note, proof_image, proof_image_public_id, created_by_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, amount, payment_mode, note, category_id, proof_image, proof_image_public_id, created_by_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
-        args: [id, amount, paymentMode, note, data.proofImage ?? null, data.proofImagePublicId ?? null, data.createdById, now, now]
+        args: [id, amount, paymentMode, note, categoryId, data.proofImage ?? null, data.proofImagePublicId ?? null, data.createdById, now, now]
     })
 
     return getExpenditureWithCreator(id)

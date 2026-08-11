@@ -153,6 +153,10 @@ export const orders = sqliteTable('orders', {
     payment: real('payment'),
     refunded: real('refunded').notNull().default(0),
     discount: real('discount').default(0),
+    charges: real('charges').notNull().default(0),
+    additionalChargesJson: text('additional_charges_json').notNull().default('[]'),
+    additionalDiscountsJson: text('additional_discounts_json').notNull().default('[]'),
+    invoiceBreakdown: integer('invoice_breakdown', { mode: 'boolean' }).notNull().default(true),
     status: text('status'),
     orderMode: text('order_mode').notNull().default('delayed'),
     stockDeducted: integer('stock_deducted', { mode: 'boolean' }).notNull().default(false),
@@ -327,16 +331,40 @@ export const aiChatMessages = sqliteTable('ai_chat_messages', {
     createdAt: createdAt()
 })
 
+export const miscExpenditureCategories = sqliteTable('misc_expenditure_categories', {
+    id: text('id').primaryKey(),
+    name: text('name').notNull().unique(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt()
+})
+
 export const miscellaneousExpenditures = sqliteTable('miscellaneous_expenditures', {
     id: text('id').primaryKey(),
     amount: real('amount').notNull(),
     paymentMode: text('payment_mode').notNull().default('cash'),
     note: text('note').notNull(),
+    categoryId: text('category_id'),
     proofImage: text('proof_image'),
     proofImagePublicId: text('proof_image_public_id'),
     createdById: text('created_by_id').notNull(),
     createdAt: createdAt(),
     updatedAt: updatedAt()
+})
+
+/** One-off product conversions: input product → output product with a qty relation. */
+export const productConversions = sqliteTable('product_conversions', {
+    id: text('id').primaryKey(),
+    inputProductId: text('input_product_id').notNull(),
+    outputProductId: text('output_product_id').notNull(),
+    /** Relation: inputRatio units of input = outputRatio units of output */
+    inputRatio: real('input_ratio').notNull(),
+    outputRatio: real('output_ratio').notNull(),
+    /** Actual stock moved */
+    inputQty: integer('input_qty').notNull(),
+    outputQty: integer('output_qty').notNull(),
+    notes: text('notes'),
+    createdById: text('created_by_id').notNull(),
+    createdAt: createdAt()
 })
 
 export type User = typeof users.$inferSelect
@@ -351,3 +379,5 @@ export type LabourerTransaction = typeof labourerTransactions.$inferSelect
 export type Supplier = typeof suppliers.$inferSelect
 export type RestockOrder = typeof restockOrders.$inferSelect
 export type RestockOrderItem = typeof restockOrderItems.$inferSelect
+export type MiscExpenditureCategory = typeof miscExpenditureCategories.$inferSelect
+export type ProductConversion = typeof productConversions.$inferSelect

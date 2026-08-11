@@ -13,6 +13,7 @@ export const en = {
         suppliers: 'Suppliers',
         restockOrders: 'Restock orders',
         recipes: 'Recipes',
+        conversions: 'Conversion',
         labour: 'Labour',
         miscExpenditure: 'Misc. expenditure',
         khata: 'Khata',

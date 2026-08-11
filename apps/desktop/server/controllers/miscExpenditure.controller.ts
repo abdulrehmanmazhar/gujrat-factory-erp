@@ -26,6 +26,17 @@ const upload = multer({
     }
 })
 
+export const getMiscExpenditureCategories = CatchAsyncError(async (req: Request, res: Response) => {
+    const categories = await miscExpenditureService.listMiscExpenditureCategories()
+    httpResponse(req, res, 200, 'Expenditure categories fetched', { categories })
+})
+
+export const createMiscExpenditureCategory = CatchAsyncError(async (req: Request, res: Response) => {
+    const name = typeof req.body?.name === 'string' ? req.body.name : ''
+    const category = await miscExpenditureService.createMiscExpenditureCategory(name)
+    httpResponse(req, res, 201, 'Expenditure category created', { category })
+})
+
 export const getMiscExpenditures = CatchAsyncError(async (req: Request, res: Response) => {
     const expenditures = await miscExpenditureService.listMiscellaneousExpenditures()
     httpResponse(req, res, 200, 'Miscellaneous expenditures fetched', { expenditures })
@@ -34,9 +45,9 @@ export const getMiscExpenditures = CatchAsyncError(async (req: Request, res: Res
 export const createMiscExpenditure = [
     upload.single('proofImage'),
     CatchAsyncError(async (req: Request, res: Response) => {
-        const { amount, paymentMode, note } = req.body
-        if (!amount || !paymentMode || !note) {
-            throw new AppError('Amount, payment mode, and note are required', 400)
+        const { amount, paymentMode, note, categoryId } = req.body
+        if (!amount || !paymentMode || !note || !categoryId) {
+            throw new AppError('Amount, payment mode, note, and category are required', 400)
         }
 
         let proofImage: string | undefined
@@ -54,6 +65,7 @@ export const createMiscExpenditure = [
             amount,
             paymentMode,
             note,
+            categoryId,
             proofImage,
             proofImagePublicId,
             createdById: req.user!.id

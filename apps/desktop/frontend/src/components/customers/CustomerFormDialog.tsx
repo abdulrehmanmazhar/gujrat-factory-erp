@@ -17,7 +17,7 @@ export function CustomerFormDialog({
     open: boolean
     onOpenChange: (open: boolean) => void
     customer: Customer | null
-    onSuccess: () => void
+    onSuccess: (saved?: Customer | null) => void
 }) {
     const [addCustomer, { isLoading: adding }] = useAddCustomerMutation()
     const [editCustomer, { isLoading: editing }] = useEditCustomerMutation()
@@ -47,13 +47,14 @@ export function CustomerFormDialog({
         }
         try {
             if (customer) {
-                await editCustomer({ id: customer.id ?? customer._id, ...form }).unwrap()
+                const { customer: saved } = await editCustomer({ id: customer.id ?? customer._id, ...form }).unwrap()
                 toast.success('Customer updated')
+                onSuccess(saved)
             } else {
-                await addCustomer(form).unwrap()
+                const { customer: saved } = await addCustomer(form).unwrap()
                 toast.success('Customer added')
+                onSuccess(saved)
             }
-            onSuccess()
         } catch (err) {
             toast.error((err as { data?: { message?: string } })?.data?.message ?? 'Save failed')
         }

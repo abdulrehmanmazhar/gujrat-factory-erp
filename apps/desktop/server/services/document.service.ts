@@ -105,12 +105,14 @@ export async function buildInvoiceOrder(orderId: string) {
 
 function mapCartLines(cart: Array<Record<string, unknown>>) {
     return (cart ?? []).map((item) => {
-        const unitPrice = item.product?.price ?? item.unitPrice ?? 0
-        const unitDiscount = item.product?.discount ?? item.unitDiscount ?? 0
+        const unitPrice = item.unitPrice ?? item.product?.price ?? 0
+        const unitDiscount = item.unitDiscount ?? item.product?.discount ?? 0
         const qty = item.qty ?? 0
+        const unitName = item.product?.unit?.name || item.product?.unitName || 'pcs'
         return {
             description: `${item.product?.name ?? 'Product'}${item.product?.category ? ` (${item.product.category})` : ''}`,
             qty,
+            unitName,
             unitPrice,
             discount: unitDiscount,
             total: unitPrice * qty - unitDiscount * qty
@@ -165,12 +167,19 @@ export function buildSlipsFromOrder(
     } = {}
 ) {
     const lang = options.lang ?? readAppSettings().documentLanguage
-    const price = order.price ?? 0
-    const discount = order.discount ?? 0
-    const grandTotal = Math.max(price - discount, 0)
+    const storedPrice = order.price ?? 0
+    const storedDiscount = order.discount ?? 0
+    const storedCharges = order.charges ?? 0
+    const additionalCharges = Array.isArray(order.additionalCharges) ? order.additionalCharges : []
+    const additionalDiscounts = Array.isArray(order.additionalDiscounts) ? order.additionalDiscounts : []
+    const invoiceBreakdown = order.invoiceBreakdown !== false
+    const allLines = mapCartLines(order.cart ?? [])
+    const itemsSubtotal = allLines.reduce((sum, line) => sum + Number(line.unitPrice) * Number(line.qty), 0)
+    const lineDiscountTotal = allLines.reduce((sum, line) => sum + Number(line.discount) * Number(line.qty), 0)
+    // New orders store net in price (charges/discount columns are 0). Legacy rows still use price + charges - discount.
+    const grandTotal = Math.max(storedPrice + storedCharges - storedDiscount, 0)
     const paid = order.payment ?? 0
     const hasReceipt = Boolean(options.receipt)
-    const allLines = mapCartLines(order.cart ?? [])
     const lineChunks = chunkLines(allLines, hasReceipt)
     const partTotal = countOrderPages(allLines.length, hasReceipt)
     let lineNumberOffset = 0
@@ -190,8 +199,13 @@ export function buildSlipsFromOrder(
             deliveryDate: formatDate(order.deliveryDate),
             orderBooker: order.orderBooker,
             message: order.message ?? '',
-            price,
-            discount,
+            price: itemsSubtotal,
+            discount: lineDiscountTotal + additionalDiscounts.reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
+            charges: additionalCharges.reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
+            lineDiscountTotal,
+            additionalCharges,
+            additionalDiscounts,
+            invoiceBreakdown,
             grandTotal,
             paid,
             outstanding: Math.max(grandTotal - paid, 0),

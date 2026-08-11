@@ -7,9 +7,11 @@ import { PageHeader, RowActions } from '@/components/shared/PageHeader'
 import { SearchInput } from '@/components/shared/SearchInput'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getApiErrorMessage } from '@/lib/errors'
 import { usePermissions } from '@/hooks/usePermissions'
-import { useDeleteMiscExpenditureMutation, useGetMiscExpendituresQuery } from '@/redux/api/miscExpenditureApi'
+import { useDeleteMiscExpenditureMutation, useGetMiscExpenditureCategoriesQuery, useGetMiscExpendituresQuery } from '@/redux/api/miscExpenditureApi'
 import type { MiscellaneousExpenditure } from '@/types/api'
 import { ExternalLink, Plus } from 'lucide-react'
 import { toast } from 'sonner'
@@ -22,28 +24,34 @@ function formatDate(value?: string) {
 export default function MiscellaneousExpenditurePage() {
     const { canWrite, canDelete } = usePermissions()
     const { data, isLoading, refetch } = useGetMiscExpendituresQuery()
+    const { data: categoriesData } = useGetMiscExpenditureCategoriesQuery()
     const [deleteExpenditure, { isLoading: deleting }] = useDeleteMiscExpenditureMutation()
 
     const [search, setSearch] = useState('')
+    const [categoryFilter, setCategoryFilter] = useState('all')
     const [from, setFrom] = useState('')
     const [to, setTo] = useState('')
     const [formOpen, setFormOpen] = useState(false)
     const [deleteId, setDeleteId] = useState<string | null>(null)
 
     const expenditures = data?.expenditures ?? []
+    const categories = categoriesData?.categories ?? []
 
     const filtered = useMemo(() => {
         return expenditures.filter((item) => {
             if (!isWithinDateRange(item.createdAt, from, to)) return false
+            if (categoryFilter === 'uncategorized' && item.categoryId) return false
+            if (categoryFilter !== 'all' && categoryFilter !== 'uncategorized' && item.categoryId !== categoryFilter) return false
             if (!search.trim()) return true
             const q = search.toLowerCase()
             return (
                 item.note.toLowerCase().includes(q) ||
                 item.paymentMode.toLowerCase().includes(q) ||
+                (item.category?.name ?? '').toLowerCase().includes(q) ||
                 (item.createdBy?.name ?? '').toLowerCase().includes(q)
             )
         })
-    }, [expenditures, search, from, to])
+    }, [expenditures, search, from, to, categoryFilter])
 
     const totals = useMemo(() => {
         return filtered.reduce(
@@ -101,14 +109,42 @@ export default function MiscellaneousExpenditurePage() {
                 <SearchInput
                     value={search}
                     onChange={setSearch}
-                    placeholder="Search by note, payment mode, or recorder..."
+                    placeholder="Search by note, category, payment mode, or recorder..."
                 />
-                <DateRangeFilter
-                    from={from}
-                    to={to}
-                    onFromChange={setFrom}
-                    onToChange={setTo}
-                />
+                <div className="flex flex-wrap items-end gap-3">
+                    <div className="space-y-1">
+                        <Label htmlFor="expense-category-filter">Category</Label>
+                        <Select
+                            value={categoryFilter}
+                            onValueChange={setCategoryFilter}>
+                            <SelectTrigger
+                                id="expense-category-filter"
+                                className="w-48">
+                                <SelectValue placeholder="All categories" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All categories</SelectItem>
+                                <SelectItem value="uncategorized">Uncategorized</SelectItem>
+                                {categories.map((c) => {
+                                    const id = c.id ?? c._id
+                                    return (
+                                        <SelectItem
+                                            key={id}
+                                            value={id}>
+                                            {c.name}
+                                        </SelectItem>
+                                    )
+                                })}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <DateRangeFilter
+                        from={from}
+                        to={to}
+                        onFromChange={setFrom}
+                        onToChange={setTo}
+                    />
+                </div>
             </div>
 
             <DataTable
@@ -118,6 +154,14 @@ export default function MiscellaneousExpenditurePage() {
                         key: 'createdAt',
                         label: 'Date',
                         render: (row) => formatDate(String(row.createdAt ?? ''))
+                    },
+                    {
+                        key: 'category',
+                        label: 'Category',
+                        render: (row) => {
+                            const item = row as unknown as MiscellaneousExpenditure
+                            return item.category?.name ?? '—'
+                        }
                     },
                     {
                         key: 'amount',

@@ -11,7 +11,7 @@ import { getApiErrorMessage } from '@/lib/errors'
 import { toast } from 'sonner'
 
 function orderPayable(order: Order) {
-    return Math.max(0, (order.price ?? 0) - (order.discount ?? 0))
+    return Math.max(0, (order.price ?? 0) + (order.charges ?? 0) - (order.discount ?? 0))
 }
 
 function orderOutstanding(order: Order) {
@@ -39,7 +39,7 @@ export function OrderDetailDialog({ open, onOpenChange, order }: { open: boolean
                             <span className="text-muted-foreground">Customer:</span> {order.customerDetails?.name}
                         </p>
                         <p>
-                            <span className="text-muted-foreground">Total:</span> {orderPayable(order)}
+                            <span className="text-muted-foreground">Order price:</span> {orderPayable(order)}
                         </p>
                         <p>
                             <span className="text-muted-foreground">Paid:</span> {order.payment ?? 0}
@@ -83,11 +83,39 @@ export function OrderDetailDialog({ open, onOpenChange, order }: { open: boolean
                                 <TableRow key={i}>
                                     <TableCell>{item.product?.name}</TableCell>
                                     <TableCell>{item.qty}</TableCell>
-                                    <TableCell>{item.product?.price}</TableCell>
+                                    <TableCell>{item.unitPrice ?? item.product?.price}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
                     </Table>
+                    {order.additionalCharges?.length || order.additionalDiscounts?.length ? (
+                        <div className="space-y-2">
+                            {order.additionalCharges?.length ? (
+                                <div>
+                                    <p className="mb-1 font-medium">Additional charges</p>
+                                    <ul className="space-y-1 text-muted-foreground">
+                                        {order.additionalCharges.map((row, i) => (
+                                            <li key={`c-${i}`}>
+                                                {row.description}: PKR {row.amount}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            ) : null}
+                            {order.additionalDiscounts?.length ? (
+                                <div>
+                                    <p className="mb-1 font-medium">Additional discounts</p>
+                                    <ul className="space-y-1 text-muted-foreground">
+                                        {order.additionalDiscounts.map((row, i) => (
+                                            <li key={`d-${i}`}>
+                                                {row.description}: PKR {row.amount}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            ) : null}
+                        </div>
+                    ) : null}
                 </div>
             </DialogContent>
         </Dialog>

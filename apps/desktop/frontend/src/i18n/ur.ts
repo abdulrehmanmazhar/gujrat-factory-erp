@@ -15,6 +15,7 @@ export const ur: TranslationTree = {
         suppliers: 'سپلائرز',
         restockOrders: 'ری اسٹاک آرڈرز',
         recipes: 'ترکیبیں',
+        conversions: 'تبدیلی',
         labour: 'مزدور',
         miscExpenditure: 'متفرق اخراجات',
         khata: 'کھاتہ',

@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { LabelledAmountList, parseLabelledAmountRows } from '@/components/orders/LabelledAmountList'
+import { CustomerSearchSelect } from '@/components/shared/CustomerSearchSelect'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { SearchInput } from '@/components/shared/SearchInput'
 import { Badge } from '@/components/ui/badge'
@@ -6,19 +8,16 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
-import { useGetCustomersQuery } from '@/redux/api/customersApi'
 import { useCreateOrderMutation } from '@/redux/api/ordersApi'
 import { useGetProductsQuery } from '@/redux/api/productsApi'
-import type { CartLine, Customer, Product } from '@/types/api'
+import type { CartLine, LabelledAmount, Product } from '@/types/api'
 import { getApiErrorMessage } from '@/lib/errors'
 import { Minus, Plus, ShoppingCart, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function PosPage() {
-    const { data: customersData } = useGetCustomersQuery()
     const { data: productsData } = useGetProductsQuery()
     const [createOrder, { isLoading: placing }] = useCreateOrderMutation()
 
@@ -26,10 +25,11 @@ export default function PosPage() {
     const [productSearch, setProductSearch] = useState('')
     const [cart, setCart] = useState<CartLine[]>([])
     const [message, setMessage] = useState('')
-    const [additionalDiscount, setAdditionalDiscount] = useState('0')
+    const [additionalCharges, setAdditionalCharges] = useState<LabelledAmount[]>([])
+    const [additionalDiscounts, setAdditionalDiscounts] = useState<LabelledAmount[]>([])
+    const [invoiceBreakdown, setInvoiceBreakdown] = useState(true)
     const [payment, setPayment] = useState('')
 
-    const customers = customersData?.customers ?? []
     const products = productsData?.products ?? []
 
     const filteredProducts = useMemo(() => {
@@ -38,12 +38,13 @@ export default function PosPage() {
         return products.filter((p) => p.inStock && p.stockQty > 0 && (p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)))
     }, [products, productSearch])
 
-    const selectedCustomer = customers.find((c) => (c.id ?? c._id) === customerId)
-
+    const chargeRows = useMemo(() => parseLabelledAmountRows(additionalCharges), [additionalCharges])
+    const discountRows = useMemo(() => parseLabelledAmountRows(additionalDiscounts), [additionalDiscounts])
     const subtotal = cart.reduce((sum, line) => sum + line.product.price * line.qty, 0)
     const lineDiscount = cart.reduce((sum, line) => sum + (line.product.discount ?? 0) * line.qty, 0)
-    const extraDiscount = Number(additionalDiscount) || 0
-    const total = Math.max(0, subtotal - lineDiscount - extraDiscount)
+    const extraDiscount = discountRows.reduce((sum, row) => sum + row.amount, 0)
+    const chargesTotal = chargeRows.reduce((sum, row) => sum + row.amount, 0)
+    const total = Math.max(0, subtotal - lineDiscount - extraDiscount + chargesTotal)
     const today = new Date().toISOString().slice(0, 10)
 
     const addToCart = (product: Product) => {
@@ -86,7 +87,9 @@ export default function PosPage() {
     const clearCart = () => {
         setCart([])
         setMessage('')
-        setAdditionalDiscount('0')
+        setAdditionalCharges([])
+        setAdditionalDiscounts([])
+        setInvoiceBreakdown(true)
         setPayment('')
     }
 
@@ -97,6 +100,16 @@ export default function PosPage() {
         }
         if (cart.length === 0) {
             toast.error('Add at least one product')
+            return
+        }
+        const incompleteCharge =
+            additionalCharges.some((row) => row.description.trim() || row.amount !== '') &&
+            additionalCharges.some((row) => !row.description.trim() || !(Number(row.amount) > 0))
+        const incompleteDiscount =
+            additionalDiscounts.some((row) => row.description.trim() || row.amount !== '') &&
+            additionalDiscounts.some((row) => !row.description.trim() || !(Number(row.amount) > 0))
+        if (incompleteCharge || incompleteDiscount) {
+            toast.error('Fill description and amount for every charge/discount row')
             return
         }
         const paid = payment === '' ? total : Number(payment)
@@ -114,7 +127,9 @@ export default function PosPage() {
                 cart: cart.map(({ productId, qty }) => ({ productId, qty })),
                 deliveryDate: today,
                 message,
-                additionalDiscount: extraDiscount,
+                additionalCharges: chargeRows,
+                additionalDiscounts: discountRows,
+                invoiceBreakdown,
                 orderMode: 'pos',
                 payment: paid
             }).unwrap()
@@ -139,28 +154,10 @@ export default function PosPage() {
                             <CardTitle className="text-base">Customer</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <Select
+                            <CustomerSearchSelect
                                 value={customerId}
-                                onValueChange={setCustomerId}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select customer" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {customers.map((c: Customer) => (
-                                        <SelectItem
-                                            key={c.id ?? c._id}
-                                            value={c.id ?? c._id}>
-                                            {c.name} — {c.contact}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            {selectedCustomer ? (
-                                <p className="mt-2 text-sm text-muted-foreground">
-                                    {selectedCustomer.address}
-                                    {selectedCustomer.udhar > 0 ? ` · Udhar: ${selectedCustomer.udhar}` : ''}
-                                </p>
-                            ) : null}
+                                onChange={setCustomerId}
+                            />
                         </CardContent>
                     </Card>
 
@@ -285,16 +282,29 @@ export default function PosPage() {
                                 placeholder="Optional note"
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="extra-discount">Additional discount</Label>
-                            <Input
-                                id="extra-discount"
-                                type="number"
-                                min={0}
-                                value={additionalDiscount}
-                                onChange={(e) => setAdditionalDiscount(e.target.value)}
+
+                        <LabelledAmountList
+                            title="Additional charges"
+                            rows={additionalCharges}
+                            onChange={setAdditionalCharges}
+                            descriptionPlaceholder="e.g. Delivery"
+                        />
+                        <LabelledAmountList
+                            title="Additional discounts"
+                            rows={additionalDiscounts}
+                            onChange={setAdditionalDiscounts}
+                            descriptionPlaceholder="e.g. Loyalty discount"
+                        />
+
+                        <label className="flex items-center gap-2 text-sm">
+                            <input
+                                type="checkbox"
+                                checked={invoiceBreakdown}
+                                onChange={(e) => setInvoiceBreakdown(e.target.checked)}
+                                className="size-4 rounded border"
                             />
-                        </div>
+                            Breakdown invoice details
+                        </label>
 
                         <div className="space-y-2">
                             <Label htmlFor="pos-payment">Payment received</Label>
@@ -310,16 +320,28 @@ export default function PosPage() {
                         </div>
 
                         <div className="space-y-1 text-sm">
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">Subtotal</span>
-                                <span>Rs {subtotal.toFixed(0)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">Discounts</span>
-                                <span>Rs {(lineDiscount + extraDiscount).toFixed(0)}</span>
-                            </div>
+                            {(lineDiscount + extraDiscount > 0 || chargesTotal > 0) && (
+                                <>
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Items</span>
+                                        <span>Rs {subtotal.toFixed(0)}</span>
+                                    </div>
+                                    {lineDiscount + extraDiscount > 0 ? (
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Discounts</span>
+                                            <span>− Rs {(lineDiscount + extraDiscount).toFixed(0)}</span>
+                                        </div>
+                                    ) : null}
+                                    {chargesTotal > 0 ? (
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Extra charges</span>
+                                            <span>+ Rs {chargesTotal.toFixed(0)}</span>
+                                        </div>
+                                    ) : null}
+                                </>
+                            )}
                             <div className="flex justify-between text-base font-semibold">
-                                <span>Total</span>
+                                <span>Order price</span>
                                 <span>Rs {total.toFixed(0)}</span>
                             </div>
                         </div>

@@ -8,7 +8,7 @@ import { connectDB } from './utils/db.js'
 import { runScheduler } from './services/order.service.js'
 import { connectWhatsapp, getLatestQr, isWhatsappConnected } from './utils/whatsapp.js'
 import { setIo } from './utils/socket.js'
-import { broadcastWhatsAppQueueStats, getWhatsAppQueueStats } from './utils/whatsappQueue.js'
+import { broadcastWhatsAppQueueStats, getWhatsAppQueueStats, startWhatsAppQueueWorker } from './utils/whatsappQueue.js'
 
 const server = http.createServer(app)
 
@@ -31,6 +31,7 @@ io.on('connection', async (socket) => {
 })
 
 connectWhatsapp(io)
+startWhatsAppQueueWorker(15_000)
 
 function setupGracefulShutdown() {
     const shutdown = () => {

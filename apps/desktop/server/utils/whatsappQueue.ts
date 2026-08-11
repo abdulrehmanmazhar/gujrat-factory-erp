@@ -11,6 +11,16 @@ import { downloadBuffer, downloadText, uploadBuffer } from './rclone.js'
 const MAX_ATTEMPTS = 5
 let processing = false
 
+function isNonRetryableSendError(message: string) {
+    const text = message.toLowerCase()
+    return text.includes('463') || text.includes('reach-out') || text.includes('account restriction') || text.includes('tctoken')
+}
+
+function kickQueueProcessing() {
+    if (!isWhatsappConnected()) return
+    processWhatsAppQueue().catch((error) => logger.error('WhatsApp queue flush after enqueue failed', { meta: { error } }))
+}
+
 /** Stored in DB — only remote paths, not file contents. */
 type QueueFileRef = {
     remotePath: string
@@ -96,6 +106,7 @@ export async function enqueueWhatsAppText(contact: string, message: string) {
         .returning()
 
     await broadcastWhatsAppQueueStats()
+    kickQueueProcessing()
     return row.id
 }
 
@@ -128,6 +139,7 @@ export async function enqueueWhatsAppDocument(contact: string, fileName: string,
         .returning()
 
     await broadcastWhatsAppQueueStats()
+    kickQueueProcessing()
     return row.id
 }
 
@@ -136,34 +148,64 @@ async function bumpAttempt(id: string, error: string) {
     if (!row) return
 
     const attempts = (row.attempts ?? 0) + 1
+    const failed = isNonRetryableSendError(error) || attempts >= MAX_ATTEMPTS
     await db
         .update(whatsappQueue)
         .set({
             attempts,
             lastError: error,
-            status: attempts >= MAX_ATTEMPTS ? 'failed' : 'pending',
+            status: failed ? 'failed' : 'pending',
             updatedAt: new Date()
         })
         .where(eq(whatsappQueue.id, id))
 }
 
+/** Flip a queue row to failed after a late Baileys ACK error (even if already marked sent). */
+export async function markWhatsAppQueueItemFailed(id: string, error: string) {
+    const [row] = await db.select().from(whatsappQueue).where(eq(whatsappQueue.id, id)).limit(1)
+    if (!row) return
+
+    if (row.status === 'failed') {
+        await db.update(whatsappQueue).set({ lastError: error, updatedAt: new Date() }).where(eq(whatsappQueue.id, id))
+        await broadcastWhatsAppQueueStats()
+        return
+    }
+
+    const attempts = Math.max(row.attempts ?? 0, 1)
+    await db
+        .update(whatsappQueue)
+        .set({
+            status: 'failed',
+            attempts,
+            lastError: error,
+            updatedAt: new Date()
+        })
+        .where(eq(whatsappQueue.id, id))
+
+    logger.error('WhatsApp queue item marked failed after send ACK error', {
+        meta: { id, previousStatus: row.status, error }
+    })
+    await broadcastWhatsAppQueueStats()
+}
+
 async function deliverItem(item: typeof whatsappQueue.$inferSelect) {
     const parsed = parsePayload(item.payload)
+    const sendOpts = { queueItemId: item.id }
 
     if (isFileRef(parsed)) {
         if (item.kind === 'text') {
             const message = await downloadText(parsed.remotePath)
-            await sendMessage(item.contact, message)
+            await sendMessage(item.contact, message, sendOpts)
             return
         }
 
         if (item.kind === 'document') {
             const fileBuffer = await downloadBuffer(parsed.remotePath)
             const fileName = parsed.fileName || 'document.pdf'
-            await sendDocument(item.contact, fileBuffer, fileName)
+            await sendDocument(item.contact, fileBuffer, fileName, 'application/pdf', sendOpts)
             if (parsed.captionRemotePath) {
                 const caption = await downloadText(parsed.captionRemotePath)
-                await sendMessage(item.contact, caption)
+                await sendMessage(item.contact, caption, sendOpts)
             }
             return
         }
@@ -172,14 +214,14 @@ async function deliverItem(item: typeof whatsappQueue.$inferSelect) {
     // Legacy embedded payloads (pre-rclone rows)
     if (item.kind === 'text') {
         const { message } = parsed as QueueTextPayload
-        await sendMessage(item.contact, message)
+        await sendMessage(item.contact, message, sendOpts)
         return
     }
 
     if (item.kind === 'document') {
         const { fileName, pdfBase64, caption } = parsed as QueueDocumentPayload
-        await sendDocument(item.contact, Buffer.from(pdfBase64, 'base64'), fileName)
-        if (caption) await sendMessage(item.contact, caption)
+        await sendDocument(item.contact, Buffer.from(pdfBase64, 'base64'), fileName, 'application/pdf', sendOpts)
+        if (caption) await sendMessage(item.contact, caption, sendOpts)
         return
     }
 
@@ -210,7 +252,18 @@ export async function processWhatsAppQueue(limit = 10) {
 
             try {
                 await deliverItem(item)
-                await db.update(whatsappQueue).set({ status: 'sent', lastError: null, updatedAt: new Date() }).where(eq(whatsappQueue.id, item.id))
+                // Re-read in case a late ACK already flipped this row to failed while we waited.
+                const [fresh] = await db.select().from(whatsappQueue).where(eq(whatsappQueue.id, item.id)).limit(1)
+                if (fresh?.status === 'failed') {
+                    logger.error('WhatsApp queue item failed via ACK after deliver returned', {
+                        meta: { id: item.id, lastError: fresh.lastError }
+                    })
+                } else {
+                    await db
+                        .update(whatsappQueue)
+                        .set({ status: 'sent', lastError: null, updatedAt: new Date() })
+                        .where(eq(whatsappQueue.id, item.id))
+                }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
                 logger.error('WhatsApp queue delivery failed', { meta: { id: item.id, error: message } })

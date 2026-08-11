@@ -31,6 +31,6 @@ export async function adjustSupplierPayable(
     return newPayable
 }
 
-export function orderOutstanding(price: number, discount: number, paid: number) {
-    return Math.max(Math.max(price - discount, 0) - paid, 0)
+export function orderOutstanding(price: number, discount: number, paid: number, charges = 0) {
+    return Math.max(Math.max(price + charges - discount, 0) - paid, 0)
 }

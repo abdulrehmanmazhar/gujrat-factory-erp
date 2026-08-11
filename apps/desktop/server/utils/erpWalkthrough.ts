@@ -30,10 +30,13 @@ Currency is always PKR. Prefer clear business language in explanations.
 ### 3) Customers & udhar (credit)
 - customers.udhar = outstanding credit the customer still owes the factory.
 - When a customer pays for an order, udhar decreases; when money is refunded, udhar increases.
-- Outstanding on an order ≈ max(0, (orders.price - orders.discount) - orders.payment).
+- Outstanding on an order ≈ max(0, (orders.price + orders.charges - orders.discount) - orders.payment).
+  For new orders, price already includes charges/discounts and charges/discount columns are 0.
 - Refundable on an order ≈ max(0, orders.payment - orders.refunded).
 - Standalone Khata customer entries (customer_transactions with order_id IS NULL) also adjust udhar:
   In (udhar_payment) decreases udhar; Out (refund) increases udhar.
+- additional_charges_json / additional_discounts_json store labelled rows for invoice display; amounts are baked into orders.price.
+- invoice_breakdown=0 hides item prices and charge lines on the PDF; grand total remains the net order price.
 
 ### 4) Sales orders (customer side)
 Flow:
@@ -48,10 +51,12 @@ Key order fields:
 - order_mode: 'pos' | 'delayed'
 - status: commonly 'saved' | 'cancelled' | 'returned' (and related saved/finalized states used by the app)
 - delivery_status: 1 delivered, 0 not
-- price: order subtotal before order-level discount handling in UI; payable ≈ price - discount
+- price: net order amount (items − discounts + additional charges); this is the payable order price
+- charges / discount: legacy columns (0 on new orders); labelled extras live in JSON for invoices
 - payment: total paid so far
 - refunded: total refunded so far
 - delivery_date, returned_at, created_at: Unix ms timestamps
+- invoice_breakdown: 1 = full price breakdown on invoice; 0 = compact invoice
 
 order_items:
 - qty, unit_price, unit_discount per product line
@@ -92,11 +97,20 @@ Restock outstanding stays separate from suppliers.payable.
 - recipes.output_product_id = finished good.
 - recipe_items.ingredient_product_id + qty = materials needed per 1 unit produced.
 - Used when production is recorded with recipe applied.
+- Recipes are persistent templates (one output ← many ingredients).
+
+### 7b) Product conversions
+- product_conversions records one-off 1:1 stock transforms (not reusable templates).
+- input_ratio / output_ratio define how many input units equal how many output units.
+- input_qty / output_qty are the actual stock moved for that conversion.
+- Creating a conversion decreases input stock and increases output stock (via adjustInventoryQty / product_stock_history).
+- Undo deletes the row and reverses stock (requires enough output stock still on hand).
 
 ### 8) Miscellaneous factory expenditure
 - miscellaneous_expenditures: overheads not tied to a customer/supplier order.
 - amount, payment_mode cash|online, note (required), optional proof_image.
-- Include these in "total expenses" / overhead analytics.
+- category_id → misc_expenditure_categories.id (user-defined expense categories).
+- Include these in "total expenses" / overhead analytics. Filter by category + date range in the UI.
 
 ### 8b) Khata (standalone party ledger)
 - Factory cashflow In = money received into the factory; Out = money paid from the factory.
@@ -145,6 +159,7 @@ units.id ← products.unit_id
 categories.id ← categories.parent_id, product_categories.category_id
 products.id ← order_items.product_id, restock_order_items.product_id, recipes.output_product_id,
               recipe_items.ingredient_product_id, labour_rates.product_id, labour_production_entries.product_id,
+              product_conversions.input_product_id, product_conversions.output_product_id
               labour_production_consumption.product_id, product_stock_history.product_id, product_sales.product_id,
               supplier_products.product_id, product_categories.product_id
 orders.id ← order_items.order_id, customer_transactions.order_id
@@ -153,6 +168,7 @@ restock_orders.id ← restock_order_items.restock_order_id, supplier_transaction
 labourers.id ← labour_rates.labourer_id, labourer_transactions.labourer_id, labour_production_entries.labourer_id
 labour_production_entries.id ← labour_production_consumption.entry_id
 recipes.id ← recipe_items.recipe_id
+misc_expenditure_categories.id ← miscellaneous_expenditures.category_id
 
 ## Important enums / values
 

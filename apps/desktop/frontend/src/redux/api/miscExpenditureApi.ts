@@ -1,11 +1,12 @@
 import { apiSlice } from '@/redux/api/apiSlice'
 import { unwrapData } from '@/lib/api-helpers'
-import type { ApiEnvelope, MiscellaneousExpenditure } from '@/types/api'
+import type { ApiEnvelope, MiscExpenditureCategory, MiscellaneousExpenditure } from '@/types/api'
 
 export type CreateMiscExpenditureInput = {
     amount: number
     paymentMode: 'cash' | 'online'
     note: string
+    categoryId: string
     proofImage?: File | null
 }
 
@@ -16,12 +17,23 @@ export const miscExpenditureApi = apiSlice.injectEndpoints({
             transformResponse: (response: ApiEnvelope<{ expenditures: MiscellaneousExpenditure[] }>) => unwrapData(response),
             providesTags: ['MiscExpenditures']
         }),
+        getMiscExpenditureCategories: builder.query<{ categories: MiscExpenditureCategory[] }, void>({
+            query: () => '/miscellaneous-expenditure-categories',
+            transformResponse: (response: ApiEnvelope<{ categories: MiscExpenditureCategory[] }>) => unwrapData(response),
+            providesTags: ['MiscExpenditures']
+        }),
+        createMiscExpenditureCategory: builder.mutation<{ category: MiscExpenditureCategory }, { name: string }>({
+            query: (body) => ({ url: '/miscellaneous-expenditure-categories', method: 'POST', body }),
+            transformResponse: (response: ApiEnvelope<{ category: MiscExpenditureCategory }>) => unwrapData(response),
+            invalidatesTags: ['MiscExpenditures']
+        }),
         createMiscExpenditure: builder.mutation<{ expenditure: MiscellaneousExpenditure }, CreateMiscExpenditureInput>({
-            query: ({ amount, paymentMode, note, proofImage }) => {
+            query: ({ amount, paymentMode, note, categoryId, proofImage }) => {
                 const body = new FormData()
                 body.append('amount', String(amount))
                 body.append('paymentMode', paymentMode)
                 body.append('note', note)
+                body.append('categoryId', categoryId)
                 if (proofImage) body.append('proofImage', proofImage)
                 return { url: '/miscellaneous-expenditures', method: 'POST', body }
             },
@@ -36,4 +48,10 @@ export const miscExpenditureApi = apiSlice.injectEndpoints({
     })
 })
 
-export const { useGetMiscExpendituresQuery, useCreateMiscExpenditureMutation, useDeleteMiscExpenditureMutation } = miscExpenditureApi
+export const {
+    useGetMiscExpendituresQuery,
+    useGetMiscExpenditureCategoriesQuery,
+    useCreateMiscExpenditureCategoryMutation,
+    useCreateMiscExpenditureMutation,
+    useDeleteMiscExpenditureMutation
+} = miscExpenditureApi

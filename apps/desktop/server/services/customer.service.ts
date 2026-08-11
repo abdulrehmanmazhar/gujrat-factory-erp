@@ -62,8 +62,6 @@ export async function listCustomers() {
         .leftJoin(users, eq(customers.createdById, users.id))
         .orderBy(desc(customers.createdAt))
 
-    if (!rows.length) throw new AppError('No customers found', 404)
-
     return rows.map(({ customer, createdByUser }) => ({
         ...withLegacyId(customer),
         createdBy: customer.createdById,

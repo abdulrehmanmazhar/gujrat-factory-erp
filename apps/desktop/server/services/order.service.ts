@@ -2,7 +2,7 @@
 
 import { and, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm'
 import { db } from '../utils/db.js'
-import { customerTransactions, customers, orderItems, orders, products, users } from '../models/tables.js'
+import { customerTransactions, customers, orderItems, orders, products, units, users } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
 import { createId, mapOrderWithCart, withLegacyId } from '../utils/mappers.js'
 import { logger } from '../config/logger.js'
@@ -13,6 +13,13 @@ import { company } from './document.service.js'
 import { adjustProductStock, findProductsByIds } from './product.service.js'
 import { adjustCustomerUdhar, orderOutstanding } from '../utils/ledger.js'
 import { adjustProductStockTx, canFulfillOrderItems, deductOrderStockTx, restoreOrderStockTx } from '../utils/inventory.js'
+import {
+    type LabelledAmount,
+    resolveAdditionalCharges,
+    resolveAdditionalDiscounts,
+    serializeLabelledAmounts,
+    sumLabelledAmounts
+} from '../utils/labelledAmounts.js'
 
 type CartInput = { productId: string; qty: number }[]
 type OrderMode = 'pos' | 'delayed'
@@ -40,19 +47,23 @@ async function findDraftOrder(customerId: string) {
 
 async function getOrderItemsWithProducts(orderId: string) {
     const rows = await db
-        .select({ item: orderItems, product: products })
+        .select({ item: orderItems, product: products, unit: units })
         .from(orderItems)
         .innerJoin(products, eq(orderItems.productId, products.id))
+        .leftJoin(units, eq(products.unitId, units.id))
         .where(eq(orderItems.orderId, orderId))
         .orderBy(orderItems.createdAt)
 
-    return rows.map(({ item, product }) => ({
+    return rows.map(({ item, product, unit }) => ({
         id: item.id,
         productId: item.productId,
         qty: item.qty,
         unitPrice: item.unitPrice,
         unitDiscount: item.unitDiscount,
-        product: withLegacyId(product)
+        product: {
+            ...withLegacyId(product),
+            unit: unit ? withLegacyId(unit) : null
+        }
     }))
 }
 
@@ -135,14 +146,17 @@ export async function createCart(customerId: string, createdById: string, cart: 
     return processCart(customerId, createdById, cart, false)
 }
 
-function calculateOrderTotals(items: Awaited<ReturnType<typeof getOrderItemsWithProducts>>, additionalDiscount: number) {
-    const price = items.reduce((acc, item) => acc + item.unitPrice * item.qty, 0)
-    const discount = items.reduce((acc, item) => acc + item.unitDiscount * item.qty, 0) + additionalDiscount
-    return { price, discount }
+function calculateOrderTotals(items: Awaited<ReturnType<typeof getOrderItemsWithProducts>>, additionalDiscountsTotal: number, chargesTotal: number) {
+    const itemsSubtotal = items.reduce((acc, item) => acc + item.unitPrice * item.qty, 0)
+    const lineDiscount = items.reduce((acc, item) => acc + item.unitDiscount * item.qty, 0)
+    const discount = lineDiscount + additionalDiscountsTotal
+    const price = Math.max(0, itemsSubtotal - discount + chargesTotal)
+    // Net amount is the order price; charges/discounts are not stored as separate payable components.
+    return { price, itemsSubtotal, discount: 0, lineDiscount, charges: 0, discountTotal: discount, chargesTotal }
 }
 
-function orderPayable(price: number, discount: number) {
-    return Math.max(price - discount, 0)
+function orderPayable(price: number, discount: number, charges = 0) {
+    return Math.max(price + charges - discount, 0)
 }
 
 async function getNextOrderNumber() {
@@ -267,7 +281,7 @@ async function applyOrderPaymentInternal(
     const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1)
     if (!order) throw new AppError('Order not found', 404)
 
-    const payable = orderPayable(order.price ?? 0, order.discount ?? 0)
+    const payable = orderPayable(order.price ?? 0, order.discount ?? 0, order.charges ?? 0)
     const alreadyPaid = order.payment ?? 0
     if (alreadyPaid + payment > payable) throw new AppError('Cannot pay more than remaining amount', 400)
 
@@ -330,18 +344,22 @@ async function finalizeOrder(
     customerId: string,
     deliveryDate: string,
     message: string,
-    additionalDiscount: number,
+    additionalDiscounts: LabelledAmount[],
+    additionalCharges: LabelledAmount[],
+    invoiceBreakdown: boolean,
     orderMode: OrderMode,
     initialPayment?: number,
     userId?: string
 ) {
     const items = await getOrderItemsWithProducts(orderId)
-    const { price, discount } = calculateOrderTotals(items, additionalDiscount)
+    const extraDiscountTotal = sumLabelledAmounts(additionalDiscounts)
+    const chargesTotal = sumLabelledAmounts(additionalCharges)
+    const { price, discount, charges } = calculateOrderTotals(items, extraDiscountTotal, chargesTotal)
     const delivery = new Date(deliveryDate)
     delivery.setUTCHours(0, 0, 0, 0)
 
     const isPos = orderMode === 'pos'
-    const payable = orderPayable(price, discount)
+    const payable = orderPayable(price, discount, charges)
     const stockItems = items.map((item) => ({ productId: item.productId, qty: item.qty }))
 
     const order = await db.transaction(async (tx) => {
@@ -355,6 +373,10 @@ async function finalizeOrder(
                 orderMode,
                 price,
                 discount,
+                charges,
+                additionalChargesJson: serializeLabelledAmounts(additionalCharges),
+                additionalDiscountsJson: serializeLabelledAmounts(additionalDiscounts),
+                invoiceBreakdown,
                 deliveryStatus: isPos,
                 updatedAt: new Date()
             })
@@ -397,7 +419,9 @@ export async function createOrder(
     cart: CartInput,
     deliveryDate: string,
     message = '',
-    additionalDiscount = 0,
+    additionalDiscounts: LabelledAmount[] = [],
+    additionalCharges: LabelledAmount[] = [],
+    invoiceBreakdown = true,
     orderMode: OrderMode = 'delayed',
     payment = 0
 ) {
@@ -405,12 +429,34 @@ export async function createOrder(
 
     if (orderMode === 'pos') {
         const order = await createSavedOrderDirect(customerId, createdById, cart, 'pos')
-        await finalizeOrder(order.id, customerId, deliveryDate, message, additionalDiscount, 'pos', payment, createdById)
+        await finalizeOrder(
+            order.id,
+            customerId,
+            deliveryDate,
+            message,
+            additionalDiscounts,
+            additionalCharges,
+            invoiceBreakdown,
+            'pos',
+            payment,
+            createdById
+        )
         return { message: 'POS order saved successfully' }
     }
 
     const order = await processCart(customerId, createdById, cart, false)
-    await finalizeOrder(order.id, customerId, deliveryDate, message, additionalDiscount, 'delayed', payment, createdById)
+    await finalizeOrder(
+        order.id,
+        customerId,
+        deliveryDate,
+        message,
+        additionalDiscounts,
+        additionalCharges,
+        invoiceBreakdown,
+        'delayed',
+        payment,
+        createdById
+    )
     return { message: 'Order saved successfully' }
 }
 
@@ -431,12 +477,19 @@ export async function deleteCartItem(orderId: string, index: number) {
     })
 }
 
-export async function addOrder(orderId: string, deliveryDate: string, message = '', additionalDiscount = 0) {
+export async function addOrder(
+    orderId: string,
+    deliveryDate: string,
+    message = '',
+    additionalDiscounts: LabelledAmount[] = [],
+    additionalCharges: LabelledAmount[] = [],
+    invoiceBreakdown = true
+) {
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
     if (!order) throw new AppError('Order not found', 400)
     if (!deliveryDate) throw new AppError('Missing required fields', 400)
 
-    await finalizeOrder(orderId, order.customerId, deliveryDate, message, additionalDiscount, 'delayed')
+    await finalizeOrder(orderId, order.customerId, deliveryDate, message, additionalDiscounts, additionalCharges, invoiceBreakdown, 'delayed')
     return { message: 'Order saved successfully' }
 }
 
@@ -478,7 +531,7 @@ export async function cancelOrder(orderId: string, refundAmount: number, userId:
             )
         }
 
-        const outstanding = orderOutstanding(order.price ?? 0, order.discount ?? 0, paid)
+        const outstanding = orderOutstanding(order.price ?? 0, order.discount ?? 0, paid, order.charges ?? 0)
         await adjustCustomerUdhar(tx, order.customerId, -outstanding)
 
         const [saved] = await tx.update(orders).set({ status: 'cancelled', updatedAt: new Date() }).where(eq(orders.id, orderId)).returning()
@@ -537,7 +590,7 @@ export async function returnOrder(
             )
         }
 
-        const outstanding = orderOutstanding(order.price ?? 0, order.discount ?? 0, paid)
+        const outstanding = orderOutstanding(order.price ?? 0, order.discount ?? 0, paid, order.charges ?? 0)
         await adjustCustomerUdhar(tx, order.customerId, -outstanding)
 
         const [saved] = await tx
@@ -631,7 +684,7 @@ export async function addOrderPayment(
     if (order.returnedAt) throw new AppError('Returned orders cannot accept payments', 400)
     if (payment <= 0) throw new AppError('Payment must be positive', 400)
 
-    const payable = orderPayable(order.price ?? 0, order.discount ?? 0)
+    const payable = orderPayable(order.price ?? 0, order.discount ?? 0, order.charges ?? 0)
     const outstanding = payable - (order.payment ?? 0)
     if (outstanding <= 0) throw new AppError('This order is already fully paid', 400)
     if (payment > outstanding) throw new AppError('Cannot pay more than the remaining amount', 400)
@@ -663,7 +716,7 @@ export async function returnOrderUdhar(orderId: string, payment: number, userId:
         if (order.payment === null || order.payment === undefined) throw new AppError("Cannot modify this order's payment", 400)
         if (order.returnedAt) throw new AppError('Returned orders cannot accept payments', 400)
 
-        const totalPayable = orderPayable(order.price ?? 0, order.discount ?? 0)
+        const totalPayable = orderPayable(order.price ?? 0, order.discount ?? 0, order.charges ?? 0)
         if ((order.payment ?? 0) >= totalPayable) throw new AppError('This order is already fully paid', 400)
 
         const [customer] = await tx.select().from(customers).where(eq(customers.id, order.customerId)).limit(1)
@@ -791,7 +844,7 @@ export async function processPaymentReminders() {
     let sent = 0
 
     for (const { order, customer } of rows) {
-        const payable = orderPayable(order.price ?? 0, order.discount ?? 0)
+        const payable = orderPayable(order.price ?? 0, order.discount ?? 0, order.charges ?? 0)
         const paid = order.payment ?? 0
         const outstanding = payable - paid
 

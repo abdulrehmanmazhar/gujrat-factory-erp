@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { LabelledAmountList, parseLabelledAmountRows } from '@/components/orders/LabelledAmountList'
+import { CustomerSearchSelect } from '@/components/shared/CustomerSearchSelect'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { SearchInput } from '@/components/shared/SearchInput'
 import { Badge } from '@/components/ui/badge'
@@ -6,19 +8,16 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
-import { useGetCustomersQuery } from '@/redux/api/customersApi'
 import { useCreateOrderMutation } from '@/redux/api/ordersApi'
 import { useGetProductsQuery } from '@/redux/api/productsApi'
-import type { CartLine, Customer, Product } from '@/types/api'
+import type { CartLine, LabelledAmount, Product } from '@/types/api'
 import { getApiErrorMessage } from '@/lib/errors'
 import { CalendarClock, Minus, Plus, ShoppingCart, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function DelayedOrderPage() {
-    const { data: customersData } = useGetCustomersQuery()
     const { data: productsData } = useGetProductsQuery()
     const [createOrder, { isLoading: placing }] = useCreateOrderMutation()
 
@@ -27,10 +26,11 @@ export default function DelayedOrderPage() {
     const [cart, setCart] = useState<CartLine[]>([])
     const [deliveryDate, setDeliveryDate] = useState(() => new Date().toISOString().slice(0, 10))
     const [message, setMessage] = useState('')
-    const [additionalDiscount, setAdditionalDiscount] = useState('0')
+    const [additionalCharges, setAdditionalCharges] = useState<LabelledAmount[]>([])
+    const [additionalDiscounts, setAdditionalDiscounts] = useState<LabelledAmount[]>([])
+    const [invoiceBreakdown, setInvoiceBreakdown] = useState(true)
     const [payment, setPayment] = useState('')
 
-    const customers = customersData?.customers ?? []
     const products = productsData?.products ?? []
     const today = new Date().toISOString().slice(0, 10)
 
@@ -40,12 +40,13 @@ export default function DelayedOrderPage() {
         return products.filter((p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q))
     }, [products, productSearch])
 
-    const selectedCustomer = customers.find((c) => (c.id ?? c._id) === customerId)
-
+    const chargeRows = useMemo(() => parseLabelledAmountRows(additionalCharges), [additionalCharges])
+    const discountRows = useMemo(() => parseLabelledAmountRows(additionalDiscounts), [additionalDiscounts])
     const subtotal = cart.reduce((sum, line) => sum + line.product.price * line.qty, 0)
     const lineDiscount = cart.reduce((sum, line) => sum + (line.product.discount ?? 0) * line.qty, 0)
-    const extraDiscount = Number(additionalDiscount) || 0
-    const total = Math.max(0, subtotal - lineDiscount - extraDiscount)
+    const extraDiscount = discountRows.reduce((sum, row) => sum + row.amount, 0)
+    const chargesTotal = chargeRows.reduce((sum, row) => sum + row.amount, 0)
+    const total = Math.max(0, subtotal - lineDiscount - extraDiscount + chargesTotal)
 
     const addToCart = (product: Product) => {
         setCart((prev) => {
@@ -79,7 +80,9 @@ export default function DelayedOrderPage() {
     const clearCart = () => {
         setCart([])
         setMessage('')
-        setAdditionalDiscount('0')
+        setAdditionalCharges([])
+        setAdditionalDiscounts([])
+        setInvoiceBreakdown(true)
         setPayment('')
         setDeliveryDate(today)
     }
@@ -102,6 +105,17 @@ export default function DelayedOrderPage() {
             return
         }
 
+        const incompleteCharge =
+            additionalCharges.some((row) => row.description.trim() || row.amount !== '') &&
+            additionalCharges.some((row) => !row.description.trim() || !(Number(row.amount) > 0))
+        const incompleteDiscount =
+            additionalDiscounts.some((row) => row.description.trim() || row.amount !== '') &&
+            additionalDiscounts.some((row) => !row.description.trim() || !(Number(row.amount) > 0))
+        if (incompleteCharge || incompleteDiscount) {
+            toast.error('Fill description and amount for every charge/discount row')
+            return
+        }
+
         const paid = payment === '' ? 0 : Number(payment)
         if (Number.isNaN(paid) || paid < 0) {
             toast.error('Enter a valid payment amount')
@@ -118,7 +132,9 @@ export default function DelayedOrderPage() {
                 cart: cart.map(({ productId, qty }) => ({ productId, qty })),
                 deliveryDate,
                 message,
-                additionalDiscount: extraDiscount,
+                additionalCharges: chargeRows,
+                additionalDiscounts: discountRows,
+                invoiceBreakdown,
                 orderMode: 'delayed',
                 payment: paid
             }).unwrap()
@@ -133,7 +149,7 @@ export default function DelayedOrderPage() {
         <div>
             <PageHeader
                 title="Delayed orders"
-                description="Schedule delivery for a future date. Orders can exceed current stock; stock is checked on the delivery date."
+                description="Book orders for a future delivery date"
             />
 
             <div className="grid gap-6 lg:grid-cols-5">
@@ -143,28 +159,10 @@ export default function DelayedOrderPage() {
                             <CardTitle className="text-base">Customer</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <Select
+                            <CustomerSearchSelect
                                 value={customerId}
-                                onValueChange={setCustomerId}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select customer" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {customers.map((c: Customer) => (
-                                        <SelectItem
-                                            key={c.id ?? c._id}
-                                            value={c.id ?? c._id}>
-                                            {c.name} — {c.contact}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            {selectedCustomer ? (
-                                <p className="mt-2 text-sm text-muted-foreground">
-                                    {selectedCustomer.address}
-                                    {selectedCustomer.udhar > 0 ? ` · Udhar: ${selectedCustomer.udhar}` : ''}
-                                </p>
-                            ) : null}
+                                onChange={setCustomerId}
+                            />
                         </CardContent>
                     </Card>
 
@@ -198,7 +196,7 @@ export default function DelayedOrderPage() {
                                                 ) : null}
                                             </p>
                                         </div>
-                                        <Badge variant={product.stockQty > 0 ? 'outline' : 'destructive'}>{product.stockQty} in stock</Badge>
+                                        <Badge variant="outline">{product.stockQty} in stock</Badge>
                                     </button>
                                 ))}
                                 {filteredProducts.length === 0 ? (
@@ -293,16 +291,30 @@ export default function DelayedOrderPage() {
                                 placeholder="Optional note"
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="extra-discount">Additional discount</Label>
-                            <Input
-                                id="extra-discount"
-                                type="number"
-                                min={0}
-                                value={additionalDiscount}
-                                onChange={(e) => setAdditionalDiscount(e.target.value)}
+
+                        <LabelledAmountList
+                            title="Additional charges"
+                            rows={additionalCharges}
+                            onChange={setAdditionalCharges}
+                            descriptionPlaceholder="e.g. Delivery"
+                        />
+                        <LabelledAmountList
+                            title="Additional discounts"
+                            rows={additionalDiscounts}
+                            onChange={setAdditionalDiscounts}
+                            descriptionPlaceholder="e.g. Loyalty discount"
+                        />
+
+                        <label className="flex items-center gap-2 text-sm">
+                            <input
+                                type="checkbox"
+                                checked={invoiceBreakdown}
+                                onChange={(e) => setInvoiceBreakdown(e.target.checked)}
+                                className="size-4 rounded border"
                             />
-                        </div>
+                            Breakdown invoice details
+                        </label>
+
                         <div className="space-y-2">
                             <Label htmlFor="delayed-payment">Advance payment (optional)</Label>
                             <Input
@@ -320,16 +332,28 @@ export default function DelayedOrderPage() {
                         </div>
 
                         <div className="space-y-1 text-sm">
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">Subtotal</span>
-                                <span>Rs {subtotal.toFixed(0)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">Discounts</span>
-                                <span>Rs {(lineDiscount + extraDiscount).toFixed(0)}</span>
-                            </div>
+                            {(lineDiscount + extraDiscount > 0 || chargesTotal > 0) && (
+                                <>
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Items</span>
+                                        <span>Rs {subtotal.toFixed(0)}</span>
+                                    </div>
+                                    {lineDiscount + extraDiscount > 0 ? (
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Discounts</span>
+                                            <span>− Rs {(lineDiscount + extraDiscount).toFixed(0)}</span>
+                                        </div>
+                                    ) : null}
+                                    {chargesTotal > 0 ? (
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Extra charges</span>
+                                            <span>+ Rs {chargesTotal.toFixed(0)}</span>
+                                        </div>
+                                    ) : null}
+                                </>
+                            )}
                             <div className="flex justify-between text-base font-semibold">
-                                <span>Total</span>
+                                <span>Order price</span>
                                 <span>Rs {total.toFixed(0)}</span>
                             </div>
                         </div>

@@ -163,13 +163,17 @@
             border-color: #f1f5f9;
             background: #fff !important;
         }
-        .col-num { width: 6%; text-align: center; }
+        .col-num { width: 5%; text-align: center; }
         .col-qty { width: 8%; text-align: center; }
-        .col-price, .col-disc, .col-total { width: 13%; text-align: right; }
+        .col-uom { width: 10%; text-align: center; }
+        .col-price, .col-disc, .col-total { width: 12%; text-align: right; }
         html[dir="rtl"] .col-price,
         html[dir="rtl"] .col-disc,
         html[dir="rtl"] .col-total { text-align: left; }
-        .col-desc { width: 47%; }
+        .col-desc { width: 41%; }
+        .items-table.compact .col-desc { width: 67%; }
+        .items-table.compact .col-qty { width: 12%; }
+        .items-table.compact .col-uom { width: 16%; }
         .totals-table {
             width: 100%;
             border-collapse: collapse;
@@ -301,15 +305,18 @@
                 </tr>
                 <tr>
                     <td class="slip-items-cell" height="100%">
-                        <table class="items-table" cellspacing="0" cellpadding="0" height="100%">
+                        <table class="items-table<%= slip.invoiceBreakdown ? '' : ' compact' %>" cellspacing="0" cellpadding="0" height="100%">
                             <thead>
                                 <tr>
                                     <th class="col-num">#</th>
                                     <th class="col-desc"><%= labels.description %></th>
                                     <th class="col-qty"><%= labels.qty %></th>
-                                    <th class="col-price"><%= labels.unit %></th>
+                                    <th class="col-uom"><%= labels.unit %></th>
+                                    <% if (slip.invoiceBreakdown) { %>
+                                    <th class="col-price"><%= labels.unitPrice %></th>
                                     <th class="col-disc"><%= labels.disc %></th>
                                     <th class="col-total"><%= labels.total %></th>
+                                    <% } %>
                                 </tr>
                             </thead>
                             <tbody>
@@ -318,9 +325,12 @@
                                     <td class="col-num"><%= line ? slip.lineNumberOffset + index + 1 : '&nbsp;' %></td>
                                     <td class="col-desc"><%= line ? line.description : '&nbsp;' %></td>
                                     <td class="col-qty"><%= line ? line.qty : '&nbsp;' %></td>
+                                    <td class="col-uom"><%= line ? (line.unitName || 'pcs') : '&nbsp;' %></td>
+                                    <% if (slip.invoiceBreakdown) { %>
                                     <td class="col-price"><%= line ? Number(line.unitPrice).toLocaleString() : '&nbsp;' %></td>
                                     <td class="col-disc"><%= line ? Number(line.discount).toLocaleString() : '&nbsp;' %></td>
                                     <td class="col-total"><%= line ? Number(line.total).toLocaleString() : '&nbsp;' %></td>
+                                    <% } %>
                                 </tr>
                                 <% }); %>
                             </tbody>
@@ -340,18 +350,36 @@
                                 <td align="right">
                                     <div class="totals-box">
                                         <table class="totals-line" cellspacing="0" cellpadding="0">
+                                            <% if (slip.invoiceBreakdown) { %>
                                             <tr>
                                                 <td class="label"><%= labels.subtotal %></td>
                                                 <td class="value"><%= labels.pkr %> <%= Number(slip.price).toLocaleString() %></td>
                                             </tr>
+                                            <% if (Number(slip.lineDiscountTotal) > 0) { %>
                                             <tr>
-                                                <td class="label"><%= labels.discount %></td>
-                                                <td class="value"><%= labels.pkr %> <%= Number(slip.discount).toLocaleString() %></td>
+                                                <td class="label"><%= labels.productDiscount %></td>
+                                                <td class="value"><%= labels.pkr %> <%= Number(slip.lineDiscountTotal).toLocaleString() %></td>
                                             </tr>
+                                            <% } %>
+                                            <% (slip.additionalCharges || []).forEach(function(row) { %>
+                                            <tr>
+                                                <td class="label"><%= row.description || labels.charge %></td>
+                                                <td class="value"><%= labels.pkr %> <%= Number(row.amount).toLocaleString() %></td>
+                                            </tr>
+                                            <% }); %>
+                                            <% } %>
+                                            <% (slip.additionalDiscounts || []).forEach(function(row) { %>
+                                            <tr>
+                                                <td class="label"><%= row.description || labels.discount %></td>
+                                                <td class="value"><%= labels.pkr %> <%= Number(row.amount).toLocaleString() %></td>
+                                            </tr>
+                                            <% }); %>
+                                            <% if (slip.invoiceBreakdown) { %>
                                             <tr>
                                                 <td class="label"><%= labels.tax %></td>
                                                 <td class="value"><%= labels.pkr %> 0</td>
                                             </tr>
+                                            <% } %>
                                             <% if (slip.paid > 0 || slip.receipt) { %>
                                             <tr>
                                                 <td class="label"><%= labels.paid %></td>

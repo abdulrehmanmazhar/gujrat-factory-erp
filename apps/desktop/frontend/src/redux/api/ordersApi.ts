@@ -95,11 +95,25 @@ export const ordersApi = apiSlice.injectEndpoints({
                 deliveryDate: string
                 message?: string
                 additionalDiscount?: number
+                additionalDiscounts?: { description: string; amount: number }[]
+                additionalCharges?: { description: string; amount: number }[]
+                invoiceBreakdown?: boolean
                 orderMode?: 'pos' | 'delayed'
                 payment?: number
             }
         >({
-            query: ({ customerId, cart, deliveryDate, message, additionalDiscount, orderMode, payment }) => ({
+            query: ({
+                customerId,
+                cart,
+                deliveryDate,
+                message,
+                additionalDiscount,
+                additionalDiscounts,
+                additionalCharges,
+                invoiceBreakdown,
+                orderMode,
+                payment
+            }) => ({
                 url: `/create-order/${customerId}`,
                 method: 'POST',
                 body: {
@@ -107,6 +121,9 @@ export const ordersApi = apiSlice.injectEndpoints({
                     deliveryDate,
                     message,
                     additionalDiscount: additionalDiscount ?? 0,
+                    additionalDiscounts: additionalDiscounts ?? [],
+                    additionalCharges: additionalCharges ?? [],
+                    invoiceBreakdown: invoiceBreakdown ?? true,
                     orderMode: orderMode ?? 'delayed',
                     payment: payment ?? 0
                 }
