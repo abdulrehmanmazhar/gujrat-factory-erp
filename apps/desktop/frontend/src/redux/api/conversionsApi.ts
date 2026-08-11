@@ -22,11 +22,11 @@ export const conversionsApi = apiSlice.injectEndpoints({
         createConversion: builder.mutation<{ conversion: ProductConversion }, CreateConversionBody>({
             query: (body) => ({ url: '/conversions', method: 'POST', body }),
             transformResponse: (response: ApiEnvelope<{ conversion: ProductConversion }>) => unwrapData(response),
-            invalidatesTags: ['Conversions', 'Products']
+            invalidatesTags: ['Conversions', 'Products', 'Categories']
         }),
         undoConversion: builder.mutation<ApiEnvelope<null>, string>({
             query: (id) => ({ url: `/conversions/${id}`, method: 'DELETE' }),
-            invalidatesTags: ['Conversions', 'Products']
+            invalidatesTags: ['Conversions', 'Products', 'Categories']
         })
     })
 })

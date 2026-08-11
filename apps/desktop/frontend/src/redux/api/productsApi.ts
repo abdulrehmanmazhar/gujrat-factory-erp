@@ -53,11 +53,11 @@ export const productsApi = apiSlice.injectEndpoints({
             { id: string; price: number; stockQty: number; totalBill: number; discount?: number }
         >({
             query: ({ id, ...body }) => ({ url: `/restock-product/${id}`, method: 'PUT', body }),
-            invalidatesTags: ['Products']
+            invalidatesTags: ['Products', 'Categories']
         }),
         deleteProduct: builder.mutation<ApiEnvelope<null>, string>({
             query: (id) => ({ url: `/delete-product/${id}`, method: 'DELETE' }),
-            invalidatesTags: ['Products']
+            invalidatesTags: ['Products', 'Categories']
         })
     })
 })

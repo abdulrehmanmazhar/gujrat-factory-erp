@@ -2,7 +2,7 @@ import { apiSlice } from '@/redux/api/apiSlice'
 import { unwrapData } from '@/lib/api-helpers'
 import type { ApiEnvelope, Labourer, LabourProductionEntry, LabourTransactionCategory, LabourerTransaction } from '@/types/api'
 
-export const LABOUR_MUTATION_TAGS = ['Labourers', 'LabourProduction', 'LabourerTransactions', 'Products'] as const
+export const LABOUR_MUTATION_TAGS = ['Labourers', 'LabourProduction', 'LabourerTransactions', 'Products', 'Categories'] as const
 
 export const labourApi = apiSlice.injectEndpoints({
     endpoints: (builder) => ({

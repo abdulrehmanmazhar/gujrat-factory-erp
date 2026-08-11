@@ -37,6 +37,12 @@ export interface Unit {
     updatedAt?: string
 }
 
+export interface StockByUnit {
+    unitId?: string | null
+    unitName: string
+    qty: number
+}
+
 export interface Category {
     id: string
     _id: string
@@ -46,6 +52,7 @@ export interface Category {
     path?: string
     children?: Category[]
     productCount?: number
+    stockByUnit?: StockByUnit[]
     createdAt?: string
     updatedAt?: string
 }

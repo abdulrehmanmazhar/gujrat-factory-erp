@@ -3,7 +3,7 @@ import { createListQueryFn, unwrapData } from '@/lib/api-helpers'
 import type { ApiEnvelope, Order } from '@/types/api'
 
 /** Any order mutation that can change product stock or customer balances. */
-export const ORDER_MUTATION_TAGS = ['Orders', 'Products', 'Customers', 'CustomerTransactions'] as const
+export const ORDER_MUTATION_TAGS = ['Orders', 'Products', 'Categories', 'Customers', 'CustomerTransactions'] as const
 
 export const ordersApi = apiSlice.injectEndpoints({
     endpoints: (builder) => ({

@@ -2,7 +2,7 @@ import { apiSlice } from '@/redux/api/apiSlice'
 import { unwrapData } from '@/lib/api-helpers'
 import type { ApiEnvelope, RestockOrder } from '@/types/api'
 
-export const RESTOCK_MUTATION_TAGS = ['RestockOrders', 'Products', 'Suppliers', 'SupplierTransactions'] as const
+export const RESTOCK_MUTATION_TAGS = ['RestockOrders', 'Products', 'Categories', 'Suppliers', 'SupplierTransactions'] as const
 
 type RestockItemInput = { productId: string; qtyOrdered: number; unitCost: number }
 

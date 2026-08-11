@@ -1,9 +1,15 @@
 // @ts-nocheck
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../utils/db.js'
-import { categories, productCategories } from '../models/tables.js'
+import { categories, productCategories, products, units } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
 import { createId, withLegacyId } from '../utils/mappers.js'
+
+export type StockByUnit = {
+    unitId: string | null
+    unitName: string
+    qty: number
+}
 
 export type CategoryNode = {
     id: string
@@ -14,6 +20,26 @@ export type CategoryNode = {
     path: string
     children: CategoryNode[]
     productCount: number
+    stockByUnit: StockByUnit[]
+}
+
+type LinkedProductStock = {
+    productId: string
+    stockQty: number
+    unitId: string | null
+    unitName: string
+}
+
+function addStockByUnit(map: Map<string, StockByUnit>, unitId: string | null, unitName: string, qty: number) {
+    const name = unitName.trim() || 'pcs'
+    const key = unitId || name
+    const existing = map.get(key)
+    if (existing) existing.qty += qty
+    else map.set(key, { unitId, unitName: name, qty })
+}
+
+function stockMapToList(map: Map<string, StockByUnit>): StockByUnit[] {
+    return [...map.values()].sort((a, b) => a.unitName.localeCompare(b.unitName))
 }
 
 async function listFlatCategories() {
@@ -69,14 +95,32 @@ export async function buildCategoryPathMap(rows?: Awaited<ReturnType<typeof list
 
 export async function listCategoryTree(): Promise<CategoryNode[]> {
     const { all, pathById } = await buildCategoryPathMap()
-    const counts = await db
+    const links = await db
         .select({
             categoryId: productCategories.categoryId,
-            count: sql<number>`count(*)`.mapWith(Number)
+            productId: productCategories.productId,
+            stockQty: products.stockQty,
+            unitId: products.unitId,
+            unitName: units.name
         })
         .from(productCategories)
-        .groupBy(productCategories.categoryId)
-    const countById = new Map(counts.map((row) => [row.categoryId, row.count]))
+        .innerJoin(products, eq(productCategories.productId, products.id))
+        .leftJoin(units, eq(products.unitId, units.id))
+
+    const productsByCategoryId = new Map<string, Map<string, LinkedProductStock>>()
+    for (const link of links) {
+        let bucket = productsByCategoryId.get(link.categoryId)
+        if (!bucket) {
+            bucket = new Map()
+            productsByCategoryId.set(link.categoryId, bucket)
+        }
+        bucket.set(link.productId, {
+            productId: link.productId,
+            stockQty: Number(link.stockQty) || 0,
+            unitId: link.unitId ?? null,
+            unitName: link.unitName?.trim() || 'pcs'
+        })
+    }
 
     const nodes = new Map<string, CategoryNode>()
     for (const row of all) {
@@ -85,7 +129,8 @@ export async function listCategoryTree(): Promise<CategoryNode[]> {
             parentId: row.parentId ?? null,
             path: pathById.get(row.id) ?? row.name,
             children: [],
-            productCount: countById.get(row.id) ?? 0
+            productCount: 0,
+            stockByUnit: []
         })
     }
 
@@ -103,6 +148,26 @@ export async function listCategoryTree(): Promise<CategoryNode[]> {
         for (const item of items) sortRecursive(item.children)
     }
     sortRecursive(roots)
+
+    const applySubtreeTotals = (node: CategoryNode): Map<string, LinkedProductStock> => {
+        const combined = new Map(productsByCategoryId.get(node.id) ?? [])
+        for (const child of node.children) {
+            for (const [productId, stock] of applySubtreeTotals(child)) {
+                combined.set(productId, stock)
+            }
+        }
+
+        const stockMap = new Map<string, StockByUnit>()
+        for (const stock of combined.values()) {
+            addStockByUnit(stockMap, stock.unitId, stock.unitName, stock.stockQty)
+        }
+
+        node.productCount = combined.size
+        node.stockByUnit = stockMapToList(stockMap)
+        return combined
+    }
+
+    for (const root of roots) applySubtreeTotals(root)
     return roots
 }
 

@@ -44,7 +44,7 @@ export const analyticsApi = apiSlice.injectEndpoints({
                 method: 'PUT',
                 body: { deliveryDate }
             }),
-            invalidatesTags: ['Orders', 'Products', 'Analytics']
+            invalidatesTags: ['Orders', 'Products', 'Categories', 'Analytics']
         })
     })
 })

@@ -15,6 +15,7 @@ import { useDeleteProductMutation, useGetProductsQuery } from '@/redux/api/produ
 import type { Category, Product } from '@/types/api'
 import { Plus, ChevronRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { formatStockByUnit, sumProductsStockByUnit } from '@/lib/stockByUnit'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -143,6 +144,8 @@ function NestedCategoryGroups({
     onDelete: (id: string) => void
     emptyLabel: string
 }) {
+    const uncategorizedStock = formatStockByUnit(sumProductsStockByUnit(uncategorized))
+
     return (
         <div className="space-y-2">
             {depth === 0 && uncategorized.length > 0 ? (
@@ -152,11 +155,12 @@ function NestedCategoryGroups({
                     <CollapsibleTrigger className="hover:bg-muted/40 flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium">
                         <ChevronRight className="size-4 transition-transform [[data-state=open]_&]:rotate-90" />
                         Uncategorized
-                        <Badge
-                            variant="secondary"
-                            className="ml-auto">
-                            {uncategorized.length}
-                        </Badge>
+                        <div className="ml-auto flex min-w-0 items-center gap-2">
+                            {uncategorizedStock ? (
+                                <span className="text-muted-foreground truncate text-xs font-normal">{uncategorizedStock}</span>
+                            ) : null}
+                            <Badge variant="secondary">{uncategorized.length}</Badge>
+                        </div>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="border-t px-2 pb-2">
                         <ProductTable
@@ -176,6 +180,7 @@ function NestedCategoryGroups({
                 const products = productsByCategory.get(id) ?? []
                 const hasChildren = Boolean(node.children?.length)
                 const isEmpty = !products.length && !hasChildren
+                const stockLabel = formatStockByUnit(node.stockByUnit) || formatStockByUnit(sumProductsStockByUnit(products))
 
                 return (
                     <Collapsible
@@ -189,11 +194,10 @@ function NestedCategoryGroups({
                                 style={{ paddingLeft: `${depth * 4}px` }}>
                                 {node.name}
                             </span>
-                            <Badge
-                                variant="secondary"
-                                className="ml-auto">
-                                {products.length}
-                            </Badge>
+                            <div className="ml-auto flex min-w-0 items-center gap-2">
+                                {stockLabel ? <span className="text-muted-foreground truncate text-xs font-normal">{stockLabel}</span> : null}
+                                <Badge variant="secondary">{typeof node.productCount === 'number' ? node.productCount : products.length}</Badge>
+                            </div>
                         </CollapsibleTrigger>
                         <CollapsibleContent className="space-y-2 border-t px-2 pb-2 pt-2">
                             {products.length ? (
@@ -249,6 +253,20 @@ export default function InventoryPage() {
     const perPage = 10
 
     const categories = categoriesData?.categories ?? []
+    const allMeta = useMemo(() => {
+        const allProducts = data?.products ?? []
+        return {
+            productCount: allProducts.length,
+            stockByUnit: sumProductsStockByUnit(allProducts)
+        }
+    }, [data?.products])
+    const uncategorizedMeta = useMemo(() => {
+        const items = (data?.products ?? []).filter((p) => !(p.categoryIds?.length || p.categories?.length))
+        return {
+            productCount: items.length,
+            stockByUnit: sumProductsStockByUnit(items)
+        }
+    }, [data?.products])
 
     const filtered = useMemo(() => {
         const list = data?.products ?? []
@@ -321,6 +339,8 @@ export default function InventoryPage() {
                     }}
                     canWrite={canWrite}
                     canDelete={canDelete}
+                    allMeta={allMeta}
+                    uncategorizedMeta={uncategorizedMeta}
                     labels={{
                         categories: t.inventory.categories,
                         allProducts: t.inventory.allProducts,

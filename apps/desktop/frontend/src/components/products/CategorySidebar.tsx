@@ -7,13 +7,27 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useCreateCategoryMutation, useDeleteCategoryMutation, useUpdateCategoryMutation } from '@/redux/api/categoriesApi'
-import type { Category } from '@/types/api'
+import type { Category, StockByUnit } from '@/types/api'
 import { getApiErrorMessage } from '@/lib/errors'
+import { formatStockByUnit } from '@/lib/stockByUnit'
 import { cn } from '@/lib/utils'
 import { ChevronRight, FolderPlus, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 export type CategoryFilter = 'all' | 'uncategorized' | string
+
+function CategoryLabel({ name, productCount, stockByUnit }: { name: string; productCount?: number; stockByUnit?: StockByUnit[] }) {
+    const stock = formatStockByUnit(stockByUnit)
+    return (
+        <>
+            <span className="block truncate">
+                {name}
+                {typeof productCount === 'number' ? <span className="text-muted-foreground ml-1 text-xs">({productCount})</span> : null}
+            </span>
+            {stock ? <span className="text-muted-foreground block truncate text-[11px] leading-tight">{stock}</span> : null}
+        </>
+    )
+}
 
 export function flattenCategories(nodes: Category[], depth = 0): Array<Category & { depth: number }> {
     const result: Array<Category & { depth: number }> = []
@@ -67,10 +81,13 @@ function CategoryTreeNode({
                 )}
                 <button
                     type="button"
-                    className="min-w-0 flex-1 truncate py-1 text-left text-sm"
+                    className="min-w-0 flex-1 py-1 text-left text-sm"
                     onClick={() => onSelect(id)}>
-                    {node.name}
-                    {typeof node.productCount === 'number' ? <span className="text-muted-foreground ml-1 text-xs">({node.productCount})</span> : null}
+                    <CategoryLabel
+                        name={node.name}
+                        productCount={node.productCount}
+                        stockByUnit={node.stockByUnit}
+                    />
                 </button>
                 {(canWrite || canDelete) && (
                     <DropdownMenu>
@@ -131,13 +148,17 @@ export function CategorySidebar({
     onSelect,
     canWrite,
     canDelete,
-    labels
+    labels,
+    allMeta,
+    uncategorizedMeta
 }: {
     categories: Category[]
     selectedId: CategoryFilter
     onSelect: (id: CategoryFilter) => void
     canWrite: boolean
     canDelete: boolean
+    allMeta?: { productCount: number; stockByUnit: StockByUnit[] }
+    uncategorizedMeta?: { productCount: number; stockByUnit: StockByUnit[] }
     labels: {
         categories: string
         allProducts: string
@@ -241,7 +262,11 @@ export function CategorySidebar({
                                 selectedId === 'all' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
                             )}
                             onClick={() => onSelect('all')}>
-                            {labels.allProducts}
+                            <CategoryLabel
+                                name={labels.allProducts}
+                                productCount={allMeta?.productCount}
+                                stockByUnit={allMeta?.stockByUnit}
+                            />
                         </button>
                         <button
                             type="button"
@@ -250,7 +275,11 @@ export function CategorySidebar({
                                 selectedId === 'uncategorized' ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
                             )}
                             onClick={() => onSelect('uncategorized')}>
-                            {labels.uncategorized}
+                            <CategoryLabel
+                                name={labels.uncategorized}
+                                productCount={uncategorizedMeta?.productCount}
+                                stockByUnit={uncategorizedMeta?.stockByUnit}
+                            />
                         </button>
                         <div className="bg-border my-2 h-px" />
                         {categories.map((node) => (
