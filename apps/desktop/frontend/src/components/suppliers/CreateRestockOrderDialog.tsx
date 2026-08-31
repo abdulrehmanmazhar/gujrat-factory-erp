@@ -36,7 +36,7 @@ export function CreateRestockOrderDialog({
     const [addQty, setAddQty] = useState('1')
     const [addCost, setAddCost] = useState('')
 
-    const suppliers = suppliersData?.suppliers?.filter((s) => s.isActive) ?? []
+    const suppliers = suppliersData?.suppliers ?? []
     const selectedSupplier = suppliers.find((s) => (s.id ?? s._id) === supplierId) ?? defaultSupplier ?? null
     const supplierProducts = (selectedSupplier?.products ?? []) as SupplierProduct[]
 

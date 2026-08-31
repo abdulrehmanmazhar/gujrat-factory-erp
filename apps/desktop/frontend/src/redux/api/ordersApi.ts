@@ -3,7 +3,7 @@ import { createListQueryFn, unwrapData } from '@/lib/api-helpers'
 import type { ApiEnvelope, Order } from '@/types/api'
 
 /** Any order mutation that can change product stock or customer balances. */
-export const ORDER_MUTATION_TAGS = ['Orders', 'Products', 'Categories', 'Customers', 'CustomerTransactions'] as const
+export const ORDER_MUTATION_TAGS = ['Orders', 'Products', 'Categories', 'Customers', 'CustomerTransactions', 'Analytics'] as const
 
 export const ordersApi = apiSlice.injectEndpoints({
     endpoints: (builder) => ({
@@ -144,6 +144,14 @@ export const ordersApi = apiSlice.injectEndpoints({
                 body,
                 responseHandler: (response) => response.blob()
             })
+        }),
+        generateOrderSheet: builder.mutation<Blob, { orderIds: string[] }>({
+            query: (body) => ({
+                url: '/generate-order-sheet',
+                method: 'POST',
+                body,
+                responseHandler: (response) => response.blob()
+            })
         })
     })
 })
@@ -160,5 +168,6 @@ export const {
     useFillCartMutation,
     useCreateOrderMutation,
     useDeleteCartItemMutation,
-    useGenerateInvoicesMutation
+    useGenerateInvoicesMutation,
+    useGenerateOrderSheetMutation
 } = ordersApi

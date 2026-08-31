@@ -1,19 +1,14 @@
-import { useMemo, useState } from 'react'
-import { useSelector } from 'react-redux'
-import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { useState } from 'react'
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { useGetCustomersQuery } from '@/redux/api/customersApi'
 import { useGetOrdersQuery } from '@/redux/api/ordersApi'
 import { useGetProductsQuery } from '@/redux/api/productsApi'
-import { usePermissions } from '@/hooks/usePermissions'
-import { downloadAnalyticsExcel, useGetHomeAnalyticsQuery } from '@/redux/api/analyticsApi'
-import { selectAuthToken } from '@/redux/slices/authSlice'
-import { Package, ShoppingCart, Users, Wallet, Download } from 'lucide-react'
-import { toast } from 'sonner'
+import { useGetHomeAnalyticsQuery } from '@/redux/api/analyticsApi'
+import { Package, ShoppingCart, Users, Wallet } from 'lucide-react'
 
 function defaultRange() {
     const end = new Date()
@@ -28,38 +23,23 @@ function defaultRange() {
 function ChartCard({
     title,
     total,
+    subtitle,
     data,
-    exportReport,
-    onExport,
-    exporting,
-    showExport = true
+    stroke = 'hsl(var(--primary))'
 }: {
     title: string
     total: number
+    subtitle?: string
     data: { date: string; total: number }[]
-    exportReport: string
-    onExport: (report: string) => void
-    exporting: string | null
-    showExport?: boolean
+    stroke?: string
 }) {
     return (
         <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2">
-                <div>
-                    <CardTitle className="text-base">{title}</CardTitle>
-                    <p className="text-sm text-muted-foreground">Total: PKR {total.toLocaleString()}</p>
-                </div>
-                {showExport ? (
-                    <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={exporting === exportReport}
-                        onClick={() => onExport(exportReport)}>
-                        <Download className="mr-2 size-4" />
-                        Excel
-                    </Button>
-                ) : null}
+            <CardHeader>
+                <CardTitle className="text-base">{title}</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                    {subtitle ?? 'Total'}: PKR {total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </p>
             </CardHeader>
             <CardContent className="h-64">
                 <ResponsiveContainer
@@ -79,7 +59,7 @@ function ChartCard({
                         <Line
                             type="monotone"
                             dataKey="total"
-                            stroke="hsl(var(--primary))"
+                            stroke={stroke}
                             strokeWidth={2}
                             dot={false}
                         />
@@ -91,10 +71,7 @@ function ChartCard({
 }
 
 export default function HomePage() {
-    const { canWrite } = usePermissions()
-    const token = useSelector(selectAuthToken)
     const [range, setRange] = useState(defaultRange)
-    const [exporting, setExporting] = useState<string | null>(null)
 
     const { data: customers } = useGetCustomersQuery()
     const { data: products } = useGetProductsQuery()
@@ -112,25 +89,11 @@ export default function HomePage() {
         }
     ]
 
-    const stockChartData = useMemo(() => analytics?.stock.series.map((p) => ({ date: p.date, inbound: p.total })) ?? [], [analytics])
-
-    const handleExport = async (report: string) => {
-        setExporting(report)
-        try {
-            await downloadAnalyticsExcel(report, range.startDate, range.endDate, () => token)
-            toast.success('Excel file downloaded')
-        } catch {
-            toast.error('Export failed')
-        } finally {
-            setExporting(null)
-        }
-    }
-
     return (
         <div className="space-y-6">
             <PageHeader
                 title="Home"
-                description="Overview of your factory ERP operations"
+                description="Financial overview of profit, expenses, and supplier liabilities"
             />
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -178,128 +141,61 @@ export default function HomePage() {
             ) : (
                 <div className="grid gap-4 xl:grid-cols-2">
                     <ChartCard
-                        title="Revenue (sales)"
-                        total={analytics?.revenue.total ?? 0}
-                        data={analytics?.revenue.series ?? []}
-                        exportReport="revenue"
-                        onExport={handleExport}
-                        exporting={exporting}
-                        showExport={canWrite}
+                        title="Profit / Loss over time"
+                        total={analytics?.profitLoss.total ?? 0}
+                        subtitle="Net (sales − COGS − labour − misc)"
+                        data={analytics?.profitLoss.series ?? []}
+                        stroke="hsl(142 76% 36%)"
                     />
                     <ChartCard
-                        title="Labour salaries & production pay"
-                        total={analytics?.labour.total ?? 0}
-                        data={analytics?.labour.series ?? []}
-                        exportReport="labour"
-                        onExport={handleExport}
-                        exporting={exporting}
-                        showExport={canWrite}
+                        title="Sales over time"
+                        total={analytics?.sales.total ?? 0}
+                        subtitle="Cash sales collected"
+                        data={analytics?.sales.series ?? []}
+                        stroke="hsl(221 83% 53%)"
                     />
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between gap-2">
-                            <div>
-                                <CardTitle className="text-base">Expenses (supplier + labour)</CardTitle>
-                                <p className="text-sm text-muted-foreground">
-                                    Total: PKR {(analytics?.expenses.total ?? 0).toLocaleString()} · Supplier:{' '}
-                                    {(analytics?.expenses.breakdown?.supplier ?? 0).toLocaleString()} · Labour:{' '}
-                                    {(analytics?.expenses.breakdown?.labour ?? 0).toLocaleString()}
-                                </p>
-                            </div>
-                            {canWrite ? (
-                                <div className="flex gap-2">
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        disabled={exporting === 'expenses-supplier'}
-                                        onClick={() => handleExport('expenses-supplier')}>
-                                        <Download className="mr-2 size-4" />
-                                        Supplier Excel
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        disabled={exporting === 'expenses-labour'}
-                                        onClick={() => handleExport('expenses-labour')}>
-                                        <Download className="mr-2 size-4" />
-                                        Labour Excel
-                                    </Button>
-                                </div>
-                            ) : null}
-                        </CardHeader>
-                        <CardContent className="h-64">
-                            <ResponsiveContainer
-                                width="100%"
-                                height="100%">
-                                <LineChart data={analytics?.expenses.series ?? []}>
-                                    <CartesianGrid
-                                        strokeDasharray="3 3"
-                                        className="stroke-muted"
-                                    />
-                                    <XAxis
-                                        dataKey="date"
-                                        tick={{ fontSize: 11 }}
-                                    />
-                                    <YAxis tick={{ fontSize: 11 }} />
-                                    <Tooltip />
-                                    <Line
-                                        type="monotone"
-                                        dataKey="total"
-                                        stroke="hsl(var(--primary))"
-                                        strokeWidth={2}
-                                        dot={false}
-                                    />
-                                </LineChart>
-                            </ResponsiveContainer>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between gap-2">
-                            <div>
-                                <CardTitle className="text-base">Stock inbound (restock / production)</CardTitle>
-                                <p className="text-sm text-muted-foreground">
-                                    Inbound units: {(analytics?.stock.totalInbound ?? 0).toLocaleString()} · Current stock:{' '}
-                                    {(analytics?.stock.currentStockTotal ?? 0).toLocaleString()}
-                                </p>
-                            </div>
-                            {canWrite ? (
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={exporting === 'stock-history'}
-                                    onClick={() => handleExport('stock-history')}>
-                                    <Download className="mr-2 size-4" />
-                                    Excel
-                                </Button>
-                            ) : null}
-                        </CardHeader>
-                        <CardContent className="h-64">
-                            <ResponsiveContainer
-                                width="100%"
-                                height="100%">
-                                <BarChart data={stockChartData}>
-                                    <CartesianGrid
-                                        strokeDasharray="3 3"
-                                        className="stroke-muted"
-                                    />
-                                    <XAxis
-                                        dataKey="date"
-                                        tick={{ fontSize: 11 }}
-                                    />
-                                    <YAxis tick={{ fontSize: 11 }} />
-                                    <Tooltip />
-                                    <Legend />
-                                    <Bar
-                                        dataKey="inbound"
-                                        fill="hsl(var(--chart-2))"
-                                        name="Inbound qty"
-                                    />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </CardContent>
-                    </Card>
+                    <ChartCard
+                        title="COGS over time"
+                        total={analytics?.cogs.total ?? 0}
+                        subtitle="FIFO cost of goods sold"
+                        data={analytics?.cogs.series ?? []}
+                        stroke="hsl(32 95% 44%)"
+                    />
+                    <ChartCard
+                        title="Labour cost over time"
+                        total={analytics?.labourCost.total ?? 0}
+                        subtitle="Labour pay & production cost"
+                        data={analytics?.labourCost.series ?? []}
+                        stroke="hsl(262 83% 58%)"
+                    />
+                    <ChartCard
+                        title="Miscellaneous expenses over time"
+                        total={analytics?.miscCost.total ?? 0}
+                        subtitle="Misc overhead"
+                        data={analytics?.miscCost.series ?? []}
+                        stroke="hsl(24 70% 45%)"
+                    />
+                    <ChartCard
+                        title="Total expenses over time"
+                        total={analytics?.expenses.total ?? 0}
+                        subtitle={`Supplier ${analytics?.expenses.breakdown.supplier?.toLocaleString() ?? 0} · Labour ${analytics?.expenses.breakdown.labour?.toLocaleString() ?? 0} · Misc ${analytics?.expenses.breakdown.misc?.toLocaleString() ?? 0}`}
+                        data={analytics?.expenses.series ?? []}
+                        stroke="hsl(0 72% 51%)"
+                    />
+                    <ChartCard
+                        title="Supplier liabilities over time"
+                        total={analytics?.liabilities.total ?? 0}
+                        subtitle="Supplier payable (end of period)"
+                        data={analytics?.liabilities.series ?? []}
+                        stroke="hsl(199 89% 40%)"
+                    />
+                    <ChartCard
+                        title="Customer receivables over time"
+                        total={analytics?.customerUdhar.total ?? 0}
+                        subtitle="Derived outstanding (end of period)"
+                        data={analytics?.customerUdhar.series ?? []}
+                        stroke="hsl(173 58% 39%)"
+                    />
                 </div>
             )}
         </div>

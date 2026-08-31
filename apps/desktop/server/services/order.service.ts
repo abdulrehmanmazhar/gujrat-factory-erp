@@ -10,8 +10,7 @@ import { formatWhatsAppContact } from '../utils/whatsapp.js'
 import { readAppSettings } from '../utils/appSettings.js'
 import { buildPaymentReminderWhatsAppMessage } from '../utils/documentI18n.js'
 import { company } from './document.service.js'
-import { adjustProductStock, findProductsByIds } from './product.service.js'
-import { adjustCustomerUdhar, orderOutstanding } from '../utils/ledger.js'
+import { findProductsByIds } from './product.service.js'
 import { adjustProductStockTx, canFulfillOrderItems, deductOrderStockTx, restoreOrderStockTx } from '../utils/inventory.js'
 import {
     type LabelledAmount,
@@ -132,10 +131,14 @@ async function processCart(customerId: string, createdById: string, cart: CartIn
     await upsertCartItems(order.id, cart, productMap)
 
     if (deductStock) {
-        for (const { productId, qty } of cart) {
-            await adjustProductStock(customerId, productId, qty, 'minus')
-        }
-        await db.update(orders).set({ stockDeducted: true, updatedAt: new Date() }).where(eq(orders.id, order.id))
+        await db.transaction(async (tx) => {
+            await deductOrderStockTx(
+                tx,
+                order.id,
+                customerId,
+                cart.map((item) => ({ productId: item.productId, qty: item.qty }))
+            )
+        })
     }
 
     const items = await getOrderItemsWithProducts(order.id)
@@ -262,8 +265,6 @@ async function applyOrderRefund(
             proofImagePublicId: proof?.proofImagePublicId
         })
 
-        await adjustCustomerUdhar(tx, order.customerId, refundAmount)
-
         return saved
     })
 
@@ -308,7 +309,6 @@ async function applyOrderPaymentInternal(
             proofImage: proof?.proofImage,
             proofImagePublicId: proof?.proofImagePublicId
         })
-        await adjustCustomerUdhar(tx, order.customerId, -payment)
     }
 
     return withLegacyId(updatedOrder)
@@ -383,7 +383,18 @@ async function finalizeOrder(
             .where(eq(orders.id, orderId))
             .returning()
 
-        await adjustCustomerUdhar(tx, customerId, payable)
+        if (payable > 0) {
+            await tx.insert(customerTransactions).values({
+                id: createId(),
+                customerId,
+                orderId,
+                type: 'order',
+                amount: payable,
+                description: `Order #${saved.orderNumber} — invoice`,
+                createdById: userId ?? saved.createdById,
+                paymentMode: 'cash'
+            })
+        }
 
         if (isPos) {
             await deductOrderStockTx(tx, orderId, customerId, stockItems)
@@ -493,13 +504,13 @@ export async function addOrder(
     return { message: 'Order saved successfully' }
 }
 
-/** Super-admin purge: removes order rows only — does not adjust stock, udhar, or transactions. */
+/** Super-admin purge: removes order and owned items; linked customer transactions keep history with order_id nulled. */
 export async function deleteOrderPermanently(orderId: string) {
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
     if (!order) throw new AppError('Order not found', 404)
 
     await db.transaction(async (tx) => {
-        await tx.delete(orderItems).where(eq(orderItems.orderId, orderId))
+        await tx.update(customerTransactions).set({ orderId: null }).where(eq(customerTransactions.orderId, orderId))
         await tx.delete(orders).where(eq(orders.id, orderId))
     })
 
@@ -531,10 +542,21 @@ export async function cancelOrder(orderId: string, refundAmount: number, userId:
             )
         }
 
-        const outstanding = orderOutstanding(order.price ?? 0, order.discount ?? 0, paid, order.charges ?? 0)
-        await adjustCustomerUdhar(tx, order.customerId, -outstanding)
-
+        const payable = orderPayable(order.price ?? 0, order.discount ?? 0, order.charges ?? 0)
         const [saved] = await tx.update(orders).set({ status: 'cancelled', updatedAt: new Date() }).where(eq(orders.id, orderId)).returning()
+
+        if (payable > 0) {
+            await tx.insert(customerTransactions).values({
+                id: createId(),
+                customerId: order.customerId,
+                orderId,
+                type: 'order_credit',
+                amount: payable,
+                description: `Order #${order.orderNumber} — credit on cancellation`,
+                createdById: userId,
+                paymentMode: 'cash'
+            })
+        }
 
         if (refundAmount > 0) {
             await tx
@@ -590,9 +612,7 @@ export async function returnOrder(
             )
         }
 
-        const outstanding = orderOutstanding(order.price ?? 0, order.discount ?? 0, paid, order.charges ?? 0)
-        await adjustCustomerUdhar(tx, order.customerId, -outstanding)
-
+        const payable = orderPayable(order.price ?? 0, order.discount ?? 0, order.charges ?? 0)
         const [saved] = await tx
             .update(orders)
             .set({
@@ -602,6 +622,19 @@ export async function returnOrder(
             })
             .where(eq(orders.id, orderId))
             .returning()
+
+        if (payable > 0) {
+            await tx.insert(customerTransactions).values({
+                id: createId(),
+                customerId: order.customerId,
+                orderId,
+                type: 'order_credit',
+                amount: payable,
+                description: `Order #${order.orderNumber} — credit on return`,
+                createdById: userId,
+                paymentMode: 'cash'
+            })
+        }
 
         if (refundAmount > 0) {
             await tx
@@ -724,7 +757,6 @@ export async function returnOrderUdhar(orderId: string, payment: number, userId:
 
         const remainingAmount = totalPayable - (order.payment ?? 0)
         if (payment > remainingAmount) throw new AppError('Cannot pay more than the remaining amount', 400)
-        if (payment > customer.udhar) throw new AppError("Cannot pay more than customer's udhar amount", 400)
         if (payment === 0 && order.payment === 0) throw new AppError('Payment has already been recorded as zero', 400)
 
         const [txn] = await tx
@@ -735,12 +767,10 @@ export async function returnOrderUdhar(orderId: string, payment: number, userId:
                 orderId,
                 type: 'udhar_payment',
                 amount: payment,
-                description: `${customer.name} (${customer.address}) paid from their udhar: ${customer.udhar}`,
+                description: `${customer.name} (${customer.address}) paid remaining balance on order #${order.orderNumber}`,
                 createdById: userId
             })
             .returning()
-
-        await adjustCustomerUdhar(tx, customer.id, -payment)
 
         const [saved] = await tx
             .update(orders)

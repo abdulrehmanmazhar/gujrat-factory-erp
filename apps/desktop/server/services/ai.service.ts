@@ -1,13 +1,15 @@
 import { logger } from '../config/logger.js'
 import { AppError } from '../utils/errors.js'
 import { getUserGeminiApiKey, getUserGeminiModel } from './geminiApiKey.service.js'
+import { getActiveAiRuntime } from './aiProvider.service.js'
 import { extractText, geminiGenerate, getFunctionCallPart, runToolCall, type GeminiContent } from './ai/geminiClient.js'
+import { runOllamaAnalyticsChat } from './ai/ollamaClient.js'
 import { parseAiChatResponse, type AiChatRequest, type AiChatResponse } from './ai/schemas.js'
 
-const SYSTEM_PROMPT = `You are the Gujrat Factory ERP business analytics assistant.
+export const AI_SYSTEM_PROMPT = `You are the Gujrat Factory ERP business analytics assistant.
 
 SCOPE — you ONLY help with ERP business analytics:
-- Sales, orders, revenue, payments, refunds, udhar/credit
+- Sales, orders, revenue, payments, refunds, customer receivables (derived net)
 - Inventory, stock, products, categories, units
 - Customers, suppliers, restock, labour, production costs
 - Miscellaneous factory expenditures
@@ -77,7 +79,7 @@ function asFunctionCall(value: unknown): { name: string; args?: Record<string, u
     return { name: call.name, args: call.args ?? {}, id: call.id }
 }
 
-async function finalizeResponse(apiKey: string, model: string, contents: GeminiContent[]): Promise<AiChatResponse> {
+async function finalizeGeminiResponse(apiKey: string, model: string, contents: GeminiContent[]): Promise<AiChatResponse> {
     contents.push({
         role: 'user',
         parts: [
@@ -88,7 +90,7 @@ async function finalizeResponse(apiKey: string, model: string, contents: GeminiC
     })
 
     const { parts } = await geminiGenerate(apiKey, model, contents, {
-        systemInstruction: SYSTEM_PROMPT,
+        systemInstruction: AI_SYSTEM_PROMPT,
         toolsEnabled: false,
         jsonMode: true
     })
@@ -101,72 +103,105 @@ async function finalizeResponse(apiKey: string, model: string, contents: GeminiC
     return parseAiChatResponse(text)
 }
 
-export async function runAiAnalyticsChat(userId: string, request: AiChatRequest): Promise<AiChatResponse> {
-    try {
-        const apiKey = await getUserGeminiApiKey(userId)
-        const model = await getUserGeminiModel(userId)
-        const contents = buildContents(request)
+async function runGeminiAnalyticsChat(userId: string, request: AiChatRequest): Promise<AiChatResponse> {
+    const apiKey = await getUserGeminiApiKey(userId)
+    const model = await getUserGeminiModel(userId)
+    const contents = buildContents(request)
 
-        for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-            const { parts, modelTurn } = await geminiGenerate(apiKey, model, contents, {
-                systemInstruction: SYSTEM_PROMPT,
-                toolsEnabled: true
-            })
+    for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+        const { parts, modelTurn } = await geminiGenerate(apiKey, model, contents, {
+            systemInstruction: AI_SYSTEM_PROMPT,
+            toolsEnabled: true
+        })
 
-            const functionCallPart = getFunctionCallPart(parts)
-            const functionCall = asFunctionCall(functionCallPart?.functionCall)
+        const functionCallPart = getFunctionCallPart(parts)
+        const functionCall = asFunctionCall(functionCallPart?.functionCall)
 
-            if (functionCall) {
-                logger.info('AI tool call', { meta: { tool: functionCall.name, userId, model } })
+        if (functionCall) {
+            logger.info('AI tool call', { meta: { tool: functionCall.name, userId, model, provider: 'gemini' } })
 
-                let toolResult: string
-                try {
-                    toolResult = await runToolCall(functionCall.name, functionCall.args ?? {})
-                } catch (error) {
-                    toolResult = JSON.stringify({
-                        error: error instanceof Error ? error.message : String(error)
-                    })
-                }
-
-                let responsePayload: Record<string, unknown>
-                try {
-                    responsePayload = JSON.parse(toolResult) as Record<string, unknown>
-                } catch {
-                    responsePayload = { output: toolResult }
-                }
-
-                contents.push(modelTurn)
-                contents.push({
-                    role: 'user',
-                    parts: [
-                        {
-                            functionResponse: {
-                                name: functionCall.name,
-                                id: functionCall.id,
-                                response: responsePayload
-                            }
-                        }
-                    ]
-                })
-                continue
-            }
-
-            const text = extractText(parts)
-            if (!text.trim()) {
-                return finalizeResponse(apiKey, model, contents)
-            }
-
+            let toolResult: string
             try {
-                return parseAiChatResponse(text)
+                toolResult = await runToolCall(functionCall.name, functionCall.args ?? {})
             } catch (error) {
-                logger.error('AI response JSON parse failed, retrying with JSON mode', {
-                    meta: { error, raw: text.slice(0, 500) }
+                toolResult = JSON.stringify({
+                    error: error instanceof Error ? error.message : String(error)
                 })
-                return finalizeResponse(apiKey, model, contents)
             }
+
+            let responsePayload: Record<string, unknown>
+            try {
+                responsePayload = JSON.parse(toolResult) as Record<string, unknown>
+            } catch {
+                responsePayload = { output: toolResult }
+            }
+
+            contents.push(modelTurn)
+            contents.push({
+                role: 'user',
+                parts: [
+                    {
+                        functionResponse: {
+                            name: functionCall.name,
+                            id: functionCall.id,
+                            response: responsePayload
+                        }
+                    }
+                ]
+            })
+            continue
         }
 
-        return finalizeResponse(apiKey, model, contents)
+        const text = extractText(parts)
+        if (!text.trim()) {
+            return finalizeGeminiResponse(apiKey, model, contents)
+        }
+
+        try {
+            return parseAiChatResponse(text)
+        } catch (error) {
+            logger.error('AI response JSON parse failed, retrying with JSON mode', {
+                meta: { error, raw: text.slice(0, 500), provider: 'gemini' }
+            })
+            return finalizeGeminiResponse(apiKey, model, contents)
+        }
+    }
+
+    return finalizeGeminiResponse(apiKey, model, contents)
+}
+
+async function runLocalOllamaAnalyticsChat(userId: string, request: AiChatRequest): Promise<AiChatResponse> {
+    const runtime = await getActiveAiRuntime(userId)
+    if (runtime.provider !== 'ollama') {
+        throw new AppError('Ollama is not the active provider', 400)
+    }
+
+    const raw = await runOllamaAnalyticsChat({
+        baseUrl: runtime.baseUrl,
+        model: runtime.model,
+        systemPrompt: AI_SYSTEM_PROMPT,
+        userMessage: request.message,
+        history: request.history,
+        maxIterations: MAX_TOOL_ITERATIONS
+    })
+
+    try {
+        return parseAiChatResponse(raw)
+    } catch (error) {
+        logger.error('Ollama response JSON parse failed', {
+            meta: { error, raw: raw.slice(0, 500), userId }
+        })
+        throw new AppError('Ollama returned an invalid analytics response. Try another model.', 502)
+    }
+}
+
+export async function runAiAnalyticsChat(userId: string, request: AiChatRequest): Promise<AiChatResponse> {
+    try {
+        const runtime = await getActiveAiRuntime(userId)
+        if (runtime.provider === 'ollama') {
+            return runLocalOllamaAnalyticsChat(userId, request)
+        }
+        return runGeminiAnalyticsChat(userId, request)
     } catch (error) {
         if (error instanceof AppError) throw error
         throw new AppError(error instanceof Error ? error.message : 'AI request failed', 502)

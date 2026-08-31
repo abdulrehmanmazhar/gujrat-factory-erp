@@ -63,15 +63,13 @@ export function GeminiApiKeyDialog({
     return (
         <Dialog
             open={open}
-            onOpenChange={(next) => {
-                if (required && !next) return
-                onOpenChange(next)
-            }}>
+            onOpenChange={onOpenChange}>
             <DialogContent className="max-w-md">
                 <DialogHeader>
                     <DialogTitle>Gemini API key</DialogTitle>
                     <DialogDescription>
                         Use your own Google AI Studio API key. Choose a Gemini model and your analytics requests will use your quota.
+                        {required ? ' You can close this and set up the key later.' : null}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -112,14 +110,12 @@ export function GeminiApiKeyDialog({
                 </div>
 
                 <DialogFooter>
-                    {!required ? (
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => onOpenChange(false)}>
-                            Cancel
-                        </Button>
-                    ) : null}
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => onOpenChange(false)}>
+                        Cancel
+                    </Button>
                     <Button
                         type="button"
                         disabled={isLoading || !apiKey.trim()}

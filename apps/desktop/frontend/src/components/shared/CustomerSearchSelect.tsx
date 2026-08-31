@@ -31,7 +31,7 @@ function CustomerDetailsPanel({ customer }: { customer: Customer | undefined }) 
         { label: 'Name', value: customer.name },
         { label: 'WhatsApp', value: customer.contact },
         { label: 'Address', value: customer.address || '—' },
-        { label: 'Udhar', value: `PKR ${(customer.udhar ?? 0).toLocaleString()}` }
+        { label: 'Net', value: `PKR ${(customer.netAmount ?? 0).toLocaleString()}` }
     ]
     if (customer.createdByUser?.name) {
         rows.push({ label: 'Created by', value: customer.createdByUser.name })

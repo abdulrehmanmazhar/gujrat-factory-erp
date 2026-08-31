@@ -134,3 +134,15 @@ export const generateInvoices = CatchAsyncError(async (req: Request, res: Respon
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
     res.send(pdfBuffer)
 })
+
+export const generateOrderSheet = CatchAsyncError(async (req: Request, res: Response) => {
+    const { orderIds } = req.body as { orderIds?: string[] }
+    if (!Array.isArray(orderIds) || !orderIds.length) {
+        throw new AppError('orderIds array is required', 400)
+    }
+    const { generateOrderSheetExcel } = await import('../services/orderSheet.service.js')
+    const { buffer, filename } = await generateOrderSheetExcel(orderIds)
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    res.send(buffer)
+})

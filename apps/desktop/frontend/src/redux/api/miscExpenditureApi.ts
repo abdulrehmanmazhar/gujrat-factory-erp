@@ -22,9 +22,25 @@ export const miscExpenditureApi = apiSlice.injectEndpoints({
             transformResponse: (response: ApiEnvelope<{ categories: MiscExpenditureCategory[] }>) => unwrapData(response),
             providesTags: ['MiscExpenditures']
         }),
-        createMiscExpenditureCategory: builder.mutation<{ category: MiscExpenditureCategory }, { name: string }>({
+        createMiscExpenditureCategory: builder.mutation<
+            { category: MiscExpenditureCategory },
+            { name: string; parentId?: string | null; sortOrder?: number }
+        >({
             query: (body) => ({ url: '/miscellaneous-expenditure-categories', method: 'POST', body }),
             transformResponse: (response: ApiEnvelope<{ category: MiscExpenditureCategory }>) => unwrapData(response),
+            invalidatesTags: ['MiscExpenditures']
+        }),
+        updateMiscExpenditureCategory: builder.mutation<
+            { category: MiscExpenditureCategory },
+            { id: string; name?: string; parentId?: string | null; sortOrder?: number }
+        >({
+            query: ({ id, ...body }) => ({ url: `/miscellaneous-expenditure-categories/${id}`, method: 'PUT', body }),
+            transformResponse: (response: ApiEnvelope<{ category: MiscExpenditureCategory }>) => unwrapData(response),
+            invalidatesTags: ['MiscExpenditures']
+        }),
+        deleteMiscExpenditureCategory: builder.mutation<null, string>({
+            query: (id) => ({ url: `/miscellaneous-expenditure-categories/${id}`, method: 'DELETE' }),
+            transformResponse: (response: ApiEnvelope<null>) => unwrapData(response),
             invalidatesTags: ['MiscExpenditures']
         }),
         createMiscExpenditure: builder.mutation<{ expenditure: MiscellaneousExpenditure }, CreateMiscExpenditureInput>({
@@ -52,6 +68,8 @@ export const {
     useGetMiscExpendituresQuery,
     useGetMiscExpenditureCategoriesQuery,
     useCreateMiscExpenditureCategoryMutation,
+    useUpdateMiscExpenditureCategoryMutation,
+    useDeleteMiscExpenditureCategoryMutation,
     useCreateMiscExpenditureMutation,
     useDeleteMiscExpenditureMutation
 } = miscExpenditureApi

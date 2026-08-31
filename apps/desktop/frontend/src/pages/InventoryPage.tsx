@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, Fragment } from 'react'
 import { Button } from '@/components/ui/button'
 import { ProductFormDialog, RestockDialog } from '@/components/products/ProductFormDialog'
 import { CategorySidebar, collectDescendantIds, type CategoryFilter } from '@/components/products/CategorySidebar'
@@ -51,6 +51,11 @@ function ProductActions({
     )
 }
 
+function formatCost(value?: number | null) {
+    if (value == null || Number.isNaN(Number(value))) return '—'
+    return Number(value).toFixed(2)
+}
+
 function ProductTable({
     products,
     loading,
@@ -68,56 +73,134 @@ function ProductTable({
     onEdit: (p: Product) => void
     onDelete: (id: string) => void
 }) {
+    const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+
+    if (loading) {
+        return (
+            <DataTable
+                loading
+                columns={[{ key: 'name', label: 'Product' }]}
+                rows={[]}
+            />
+        )
+    }
+
     return (
-        <DataTable
-            loading={loading}
-            columns={[
-                { key: 'name', label: 'Product' },
-                {
-                    key: 'category',
-                    label: 'Category',
-                    render: (row) => {
-                        const item = row as unknown as Product
-                        if (item.categories?.length) {
-                            return item.categories.map((c) => c.name).join(', ')
-                        }
-                        return item.category || '—'
-                    }
-                },
-                {
-                    key: 'unit',
-                    label: 'Unit',
-                    render: (row) => {
-                        const item = row as unknown as Product
-                        return item.unit?.name ?? '—'
-                    }
-                },
-                { key: 'price', label: 'Customer price' },
-                { key: 'stockQty', label: 'Stock' },
-                {
-                    key: 'inStock',
-                    label: 'Status',
-                    render: (row) => <Badge variant={row.inStock ? 'default' : 'destructive'}>{row.inStock ? 'In Stock' : 'Out of Stock'}</Badge>
-                }
-            ]}
-            rows={products as unknown as Record<string, unknown>[]}
-            renderActions={
-                canWrite || canDelete
-                    ? (row) => {
-                          const product = row as unknown as Product
-                          return (
-                              <ProductActions
-                                  canWrite={canWrite}
-                                  canDelete={canDelete}
-                                  onRestock={() => onRestock(product)}
-                                  onEdit={() => onEdit(product)}
-                                  onDelete={() => onDelete(String(product.id ?? product._id))}
-                              />
-                          )
-                      }
-                    : undefined
-            }
-        />
+        <div className="rounded-lg border">
+            <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-left">
+                    <tr className="border-b">
+                        <th className="px-3 py-2 font-medium">Product</th>
+                        <th className="px-3 py-2 font-medium">Category</th>
+                        <th className="px-3 py-2 font-medium">Unit</th>
+                        <th className="px-3 py-2 font-medium">Customer price</th>
+                        <th className="px-3 py-2 font-medium">Avg cost</th>
+                        <th className="px-3 py-2 font-medium">FIFO cost</th>
+                        <th className="px-3 py-2 font-medium">Stock</th>
+                        <th className="px-3 py-2 font-medium">Status</th>
+                        {canWrite || canDelete ? <th className="px-3 py-2 text-right font-medium">Actions</th> : null}
+                    </tr>
+                </thead>
+                <tbody>
+                    {products.length === 0 ? (
+                        <tr>
+                            <td
+                                colSpan={canWrite || canDelete ? 9 : 8}
+                                className="px-3 py-6 text-center text-muted-foreground">
+                                No records found
+                            </td>
+                        </tr>
+                    ) : (
+                        products.map((product) => {
+                            const id = String(product.id ?? product._id)
+                            const open = Boolean(expanded[id])
+                            const batches = (product.batches ?? []).filter((batch) => batch.remainingQty > 0)
+                            return (
+                                <Fragment key={id}>
+                                    <tr className="border-b">
+                                        <td className="px-3 py-2">
+                                            <button
+                                                type="button"
+                                                className="inline-flex items-center gap-1 font-medium hover:underline"
+                                                onClick={() => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }))}>
+                                                <ChevronRight className={cn('size-3.5 transition-transform', open && 'rotate-90')} />
+                                                {product.name}
+                                            </button>
+                                            <div className="text-muted-foreground pl-5 text-xs">
+                                                Value {formatCost(product.inventoryValue)} · {batches.length} open batch
+                                                {batches.length === 1 ? '' : 'es'}
+                                            </div>
+                                        </td>
+                                        <td className="px-3 py-2">
+                                            {product.categories?.length ? product.categories.map((c) => c.name).join(', ') : product.category || '—'}
+                                        </td>
+                                        <td className="px-3 py-2">{product.unit?.name ?? '—'}</td>
+                                        <td className="px-3 py-2">{product.price}</td>
+                                        <td className="px-3 py-2">{formatCost(product.averageCost ?? product.purchasePrice)}</td>
+                                        <td className="px-3 py-2">{formatCost(product.fifoCost)}</td>
+                                        <td className="px-3 py-2">{product.stockQty}</td>
+                                        <td className="px-3 py-2">
+                                            <Badge variant={product.inStock ? 'default' : 'destructive'}>
+                                                {product.inStock ? 'In Stock' : 'Out of Stock'}
+                                            </Badge>
+                                        </td>
+                                        {canWrite || canDelete ? (
+                                            <td className="px-3 py-2 text-right">
+                                                <ProductActions
+                                                    canWrite={canWrite}
+                                                    canDelete={canDelete}
+                                                    onRestock={() => onRestock(product)}
+                                                    onEdit={() => onEdit(product)}
+                                                    onDelete={() => onDelete(id)}
+                                                />
+                                            </td>
+                                        ) : null}
+                                    </tr>
+                                    {open ? (
+                                        <tr className="border-b bg-muted/20">
+                                            <td
+                                                colSpan={canWrite || canDelete ? 9 : 8}
+                                                className="px-3 py-3">
+                                                {batches.length === 0 ? (
+                                                    <p className="text-muted-foreground text-xs">No open cost batches.</p>
+                                                ) : (
+                                                    <div className="overflow-x-auto">
+                                                        <table className="w-full text-xs">
+                                                            <thead>
+                                                                <tr className="text-muted-foreground text-left">
+                                                                    <th className="px-2 py-1 font-medium">Source</th>
+                                                                    <th className="px-2 py-1 font-medium">Received</th>
+                                                                    <th className="px-2 py-1 font-medium">Remaining</th>
+                                                                    <th className="px-2 py-1 font-medium">Original</th>
+                                                                    <th className="px-2 py-1 font-medium">Unit cost</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {batches.map((batch) => (
+                                                                    <tr key={batch.id}>
+                                                                        <td className="px-2 py-1">{batch.sourceLabel ?? batch.sourceType}</td>
+                                                                        <td className="px-2 py-1">
+                                                                            {batch.receivedAt ? new Date(batch.receivedAt).toLocaleString() : '—'}
+                                                                        </td>
+                                                                        <td className="px-2 py-1">{batch.remainingQty}</td>
+                                                                        <td className="px-2 py-1">{batch.originalQty}</td>
+                                                                        <td className="px-2 py-1">{formatCost(batch.unitCost)}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ) : null}
+                                </Fragment>
+                            )
+                        })
+                    )}
+                </tbody>
+            </table>
+        </div>
     )
 }
 

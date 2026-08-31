@@ -1,11 +1,12 @@
 // @ts-nocheck
 import { and, desc, eq, gte, lte } from 'drizzle-orm'
 import { db } from '../utils/db.js'
-import { customerTransactions, customers } from '../models/tables.js'
+import { customerTransactions, customers, orders } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
 import { createId, withLegacyId } from '../utils/mappers.js'
+import { deleteRemoteFile } from '../utils/rclone.js'
 
-export type CustomerTransactionType = 'sale' | 'refund' | 'udhar_payment'
+export type CustomerTransactionType = 'sale' | 'refund' | 'udhar_payment' | 'order' | 'order_credit'
 
 export async function createCustomerTransaction(data: {
     customerId: string
@@ -40,7 +41,38 @@ export async function createCustomerTransaction(data: {
 export async function deleteCustomerTransaction(id: string) {
     const [target] = await db.select().from(customerTransactions).where(eq(customerTransactions.id, id)).limit(1)
     if (!target) throw new AppError('Customer transaction not found', 404)
-    await db.delete(customerTransactions).where(eq(customerTransactions.id, id))
+
+    await db.transaction(async (tx) => {
+        if (target.orderId) {
+            const [order] = await tx.select().from(orders).where(eq(orders.id, target.orderId)).limit(1)
+            if (target.type === 'order') {
+                if (order && (order.status === 'saved' || !order.status)) {
+                    throw new AppError('Invoice charges cannot be deleted while the order is active. Cancel or return the order instead.', 400)
+                }
+                const siblings = await tx.select().from(customerTransactions).where(eq(customerTransactions.orderId, target.orderId))
+                const hasPayments = siblings.some((row) => row.id !== id && (row.type === 'sale' || row.type === 'refund' || row.type === 'udhar_payment'))
+                if (hasPayments) {
+                    throw new AppError('Delete order payments and refunds before deleting the invoice charge.', 400)
+                }
+            } else if (order && (target.type === 'sale' || target.type === 'udhar_payment')) {
+                await tx
+                    .update(orders)
+                    .set({ payment: Math.max(0, (order.payment ?? 0) - target.amount), updatedAt: new Date() })
+                    .where(eq(orders.id, order.id))
+            } else if (order && target.type === 'refund') {
+                await tx
+                    .update(orders)
+                    .set({ refunded: Math.max(0, (order.refunded ?? 0) - target.amount), updatedAt: new Date() })
+                    .where(eq(orders.id, order.id))
+            }
+        }
+
+        await tx.delete(customerTransactions).where(eq(customerTransactions.id, id))
+    })
+
+    if (target.proofImagePublicId) {
+        await deleteRemoteFile(target.proofImagePublicId)
+    }
 }
 
 export async function getCustomerTransaction(id: string) {

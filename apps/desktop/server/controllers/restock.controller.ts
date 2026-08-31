@@ -4,7 +4,7 @@ import { httpResponse } from '../utils/http.js'
 import { param } from '../utils/params.js'
 import { AppError } from '../utils/errors.js'
 import * as restockService from '../services/restock.service.js'
-import { listSupplierTransactions } from '../services/supplierTransaction.service.js'
+import { listSupplierTransactions, deleteSupplierTransaction as removeSupplierTransaction } from '../services/supplierTransaction.service.js'
 import { parsePaymentProofFromBody } from '../utils/paymentMode.js'
 import { proofImageUpload, uploadProofImageFromRequest } from '../utils/proofUpload.js'
 
@@ -52,6 +52,11 @@ export const getSupplierTransactions = CatchAsyncError(async (req: Request, res:
     const restockOrderId = typeof req.query.restockOrderId === 'string' ? req.query.restockOrderId : undefined
     const transactions = await listSupplierTransactions(restockOrderId)
     httpResponse(req, res, 200, 'Supplier transactions fetched successfully', { transactions })
+})
+
+export const deleteSupplierTransaction = CatchAsyncError(async (req: Request, res: Response) => {
+    await removeSupplierTransaction(param(req.params.id))
+    httpResponse(req, res, 200, 'Supplier transaction deleted successfully', null)
 })
 
 export const recordRestockPayment = [

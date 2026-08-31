@@ -4,7 +4,8 @@ import { db } from '../utils/db.js'
 import { productConversions, products, users } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
 import { createId, withLegacyId } from '../utils/mappers.js'
-import { adjustInventoryQty, getProductById } from './product.service.js'
+import { getProductById } from './product.service.js'
+import { consumeInventoryFifo, createInventoryBatch } from './inventoryBatch.service.js'
 
 export type CreateConversionInput = {
     inputProductId: string
@@ -93,12 +94,35 @@ export async function createConversion(data: CreateConversionInput) {
     }
 
     const id = createId()
+    const consumed = await consumeInventoryFifo(data.inputProductId, inputQty, {
+        reason: 'conversion',
+        conversionId: id,
+        writeHistory: true,
+        updateProductStock: true
+    })
+    const unitCost = outputQty > 0 ? consumed.totalCost / outputQty : 0
 
-    await adjustInventoryQty(data.inputProductId, -inputQty)
     try {
-        await adjustInventoryQty(data.outputProductId, outputQty)
+        await createInventoryBatch({
+            productId: data.outputProductId,
+            sourceType: 'conversion',
+            originalQty: outputQty,
+            unitCost,
+            conversionId: id,
+            sourceRefId: id,
+            notes: data.notes?.trim() || 'Product conversion',
+            writeHistory: true
+        })
     } catch (error) {
-        await adjustInventoryQty(data.inputProductId, inputQty)
+        await createInventoryBatch({
+            productId: data.inputProductId,
+            sourceType: 'conversion',
+            originalQty: inputQty,
+            unitCost: inputQty > 0 ? consumed.totalCost / inputQty : 0,
+            conversionId: id,
+            notes: 'Rollback after failed conversion output',
+            writeHistory: true
+        })
         throw error
     }
 
@@ -131,11 +155,32 @@ export async function undoConversion(id: string) {
         throw new AppError(`Cannot undo: ${outputProduct.name} stock is ${outputProduct.stockQty}, but conversion added ${row.outputQty}`, 400)
     }
 
-    await adjustInventoryQty(row.outputProductId, -row.outputQty)
+    const outputConsumed = await consumeInventoryFifo(row.outputProductId, row.outputQty, {
+        reason: 'conversion',
+        conversionId: id,
+        writeHistory: true,
+        updateProductStock: true
+    })
     try {
-        await adjustInventoryQty(row.inputProductId, row.inputQty)
+        await createInventoryBatch({
+            productId: row.inputProductId,
+            sourceType: 'conversion',
+            originalQty: row.inputQty,
+            unitCost: row.inputQty > 0 ? outputConsumed.totalCost / row.inputQty : 0,
+            conversionId: id,
+            notes: 'Undo conversion',
+            writeHistory: true
+        })
     } catch (error) {
-        await adjustInventoryQty(row.outputProductId, row.outputQty)
+        await createInventoryBatch({
+            productId: row.outputProductId,
+            sourceType: 'conversion',
+            originalQty: row.outputQty,
+            unitCost: row.outputQty > 0 ? outputConsumed.totalCost / row.outputQty : 0,
+            conversionId: id,
+            notes: 'Rollback after failed conversion undo',
+            writeHistory: true
+        })
         throw error
     }
 

@@ -6,6 +6,7 @@ import DashboardPage from '@/pages/DashboardPage'
 import HelpPage from '@/pages/HelpPage'
 import HomePage from '@/pages/HomePage'
 import InventoryPage from '@/pages/InventoryPage'
+import InventoryAnalyticsPage from '@/pages/InventoryAnalyticsPage'
 import NotFoundPage from '@/pages/NotFoundPage'
 import OrdersPage from '@/pages/OrdersPage'
 import SuppliersPage from '@/pages/SuppliersPage'
@@ -13,14 +14,17 @@ import RestockOrdersPage from '@/pages/RestockOrdersPage'
 import RecipesPage from '@/pages/RecipesPage'
 import ConversionPage from '@/pages/ConversionPage'
 import LabourPage from '@/pages/LabourPage'
+import LabourAnalyticsPage from '@/pages/LabourAnalyticsPage'
 import PosPage from '@/pages/PosPage'
 import DelayedOrderPage from '@/pages/DelayedOrderPage'
 import WhatsAppPage from '@/pages/WhatsAppPage'
+import MediaPage from '@/pages/MediaPage'
 import ProfilePage from '@/pages/ProfilePage'
 import SettingsPage from '@/pages/SettingsPage'
 import AiAnalyticsPage from '@/pages/AiAnalyticsPage'
 import MiscellaneousExpenditurePage from '@/pages/MiscellaneousExpenditurePage'
-import KhataPage from '@/pages/KhataPage'
+import CustomersAnalyticsPage from '@/pages/CustomersAnalyticsPage'
+import SuppliersAnalyticsPage from '@/pages/SuppliersAnalyticsPage'
 import { Route, Routes } from 'react-router-dom'
 
 export default function Router() {
@@ -60,18 +64,38 @@ export default function Router() {
                     element={<WhatsAppPage />}
                 />
                 <Route
+                    path="media"
+                    element={<MediaPage />}
+                />
+                <Route
                     path="inventory"
                     element={<InventoryPage />}
+                />
+                <Route
+                    path="inventory-analytics"
+                    element={<InventoryAnalyticsPage />}
                 />
                 <Route
                     path="customers"
                     element={<CustomersPage />}
                 />
                 <Route
+                    path="customers-analytics"
+                    element={<CustomersAnalyticsPage />}
+                />
+                <Route
                     path="suppliers"
                     element={
                         <RequireWrite>
                             <SuppliersPage />
+                        </RequireWrite>
+                    }
+                />
+                <Route
+                    path="suppliers-analytics"
+                    element={
+                        <RequireWrite>
+                            <SuppliersAnalyticsPage />
                         </RequireWrite>
                     }
                 />
@@ -108,18 +132,18 @@ export default function Router() {
                     }
                 />
                 <Route
-                    path="miscellaneous-expenditure"
+                    path="labour-analytics"
                     element={
                         <RequireWrite>
-                            <MiscellaneousExpenditurePage />
+                            <LabourAnalyticsPage />
                         </RequireWrite>
                     }
                 />
                 <Route
-                    path="khata"
+                    path="miscellaneous-expenditure"
                     element={
                         <RequireWrite>
-                            <KhataPage />
+                            <MiscellaneousExpenditurePage />
                         </RequireWrite>
                     }
                 />

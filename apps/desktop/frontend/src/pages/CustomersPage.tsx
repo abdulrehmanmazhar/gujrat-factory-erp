@@ -48,7 +48,7 @@ export default function CustomersPage() {
         <div>
             <PageHeader
                 title="Customers"
-                description="Manage customer records and udhar balances"
+                description="Manage customer records and derived net balances"
                 actions={
                     canWrite ? (
                         <Button
@@ -81,7 +81,11 @@ export default function CustomersPage() {
                 columns={[
                     { key: 'name', label: 'Name' },
                     { key: 'contact', label: 'Contact' },
-                    { key: 'udhar', label: 'Udhar' },
+                    {
+                        key: 'netAmount',
+                        label: 'Net',
+                        render: (row) => `PKR ${Number((row as { netAmount?: number }).netAmount ?? 0).toLocaleString()}`
+                    },
                     {
                         key: 'createdByUser',
                         label: 'Created By',

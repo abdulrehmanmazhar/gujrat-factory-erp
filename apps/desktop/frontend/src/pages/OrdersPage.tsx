@@ -10,9 +10,9 @@ import { Button } from '@/components/ui/button'
 import { downloadBlob } from '@/lib/download'
 import { getApiErrorMessage } from '@/lib/errors'
 import { usePermissions } from '@/hooks/usePermissions'
-import { useGenerateInvoicesMutation, useDeleteOrderMutation, useGetOrdersQuery } from '@/redux/api/ordersApi'
+import { useGenerateInvoicesMutation, useGenerateOrderSheetMutation, useDeleteOrderMutation, useGetOrdersQuery } from '@/redux/api/ordersApi'
 import type { Order } from '@/types/api'
-import { FileDown } from 'lucide-react'
+import { FileDown, FileSpreadsheet } from 'lucide-react'
 import { toast } from 'sonner'
 
 function orderPayable(order: Order) {
@@ -43,6 +43,7 @@ export default function OrdersPage() {
     const { canWrite, canDelete } = usePermissions()
     const { data, isLoading } = useGetOrdersQuery()
     const [generateInvoices, { isLoading: generating }] = useGenerateInvoicesMutation()
+    const [generateOrderSheet, { isLoading: generatingSheet }] = useGenerateOrderSheetMutation()
     const [deleteOrder, { isLoading: deleting }] = useDeleteOrderMutation()
     const [search, setSearch] = useState('')
     const [page, setPage] = useState(1)
@@ -89,6 +90,20 @@ export default function OrdersPage() {
         })
     }
 
+    const handleGenerateOrderSheet = async () => {
+        if (selectedIds.size === 0) {
+            toast.error('Select at least one order')
+            return
+        }
+        try {
+            const blob = await generateOrderSheet({ orderIds: [...selectedIds] }).unwrap()
+            downloadBlob(blob, `Order-sheet-${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}.xlsx`)
+            toast.success('Order sheet downloaded')
+        } catch (err) {
+            toast.error(getApiErrorMessage(err, 'Failed to generate order sheet'))
+        }
+    }
+
     const handleGenerateInvoices = async () => {
         if (selectedIds.size === 0) {
             toast.error('Select at least one order')
@@ -121,12 +136,21 @@ export default function OrdersPage() {
                 description="View and manage customer orders, payments, and refunds"
                 actions={
                     canWrite ? (
-                        <Button
-                            onClick={handleGenerateInvoices}
-                            disabled={generating || selectedIds.size === 0}>
-                            <FileDown className="size-4" />
-                            {generating ? 'Generating...' : `Generate Invoices (${selectedIds.size})`}
-                        </Button>
+                        <>
+                            <Button
+                                variant="outline"
+                                onClick={() => void handleGenerateOrderSheet()}
+                                disabled={generatingSheet || selectedIds.size === 0}>
+                                <FileSpreadsheet className="size-4" />
+                                {generatingSheet ? 'Generating...' : `Generate order sheet (${selectedIds.size})`}
+                            </Button>
+                            <Button
+                                onClick={() => void handleGenerateInvoices()}
+                                disabled={generating || selectedIds.size === 0}>
+                                <FileDown className="size-4" />
+                                {generating ? 'Generating...' : `Generate invoices (${selectedIds.size})`}
+                            </Button>
+                        </>
                     ) : undefined
                 }
             />
@@ -281,7 +305,7 @@ export default function OrdersPage() {
                 open={!!deleteOrderTarget}
                 onOpenChange={() => setDeleteOrderTarget(null)}
                 title="Delete order permanently?"
-                description="This removes the order record only. Stock levels, customer udhar, and existing transactions will not be changed."
+                description="This removes the order record only. Stock levels and existing transactions will not be changed."
                 onConfirm={handleDeleteOrder}
                 loading={deleting}
             />

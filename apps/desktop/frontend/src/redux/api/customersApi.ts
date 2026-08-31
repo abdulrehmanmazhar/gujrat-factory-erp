@@ -12,16 +12,16 @@ export const customersApi = apiSlice.injectEndpoints({
         addCustomer: builder.mutation<{ customer: Customer }, Partial<Customer>>({
             query: (body) => ({ url: '/add-customer', method: 'POST', body }),
             transformResponse: (response: ApiEnvelope<{ customer: Customer }>) => unwrapData(response),
-            invalidatesTags: ['Customers']
+            invalidatesTags: ['Customers', 'Analytics']
         }),
         editCustomer: builder.mutation<{ customer: Customer }, Partial<Customer> & { id: string }>({
             query: ({ id, ...body }) => ({ url: `/edit-customer/${id}`, method: 'PUT', body }),
             transformResponse: (response: ApiEnvelope<{ customer: Customer }>) => unwrapData(response),
-            invalidatesTags: ['Customers']
+            invalidatesTags: ['Customers', 'Analytics']
         }),
         deleteCustomer: builder.mutation<ApiEnvelope<null>, string>({
             query: (id) => ({ url: `/delete-customer/${id}`, method: 'DELETE' }),
-            invalidatesTags: ['Customers']
+            invalidatesTags: ['Customers', 'Analytics']
         }),
         returnUdhar: builder.mutation<{ udhar: number }, { id: string; returnUdhar: number }>({
             query: ({ id, returnUdhar }) => ({
@@ -30,12 +30,22 @@ export const customersApi = apiSlice.injectEndpoints({
                 body: { returnUdhar }
             }),
             transformResponse: (response: ApiEnvelope<{ udhar: number }>) => unwrapData(response),
-            invalidatesTags: ['Customers', 'Orders']
+            invalidatesTags: ['Customers', 'Orders', 'CustomerTransactions', 'Analytics']
+        }),
+        deleteCustomerTransaction: builder.mutation<ApiEnvelope<null>, string>({
+            query: (id) => ({ url: `/delete-transaction/${id}`, method: 'DELETE' }),
+            invalidatesTags: ['Customers', 'Orders', 'CustomerTransactions', 'Analytics', 'Khata']
         })
     })
 })
 
-export const { useGetCustomersQuery, useAddCustomerMutation, useEditCustomerMutation, useDeleteCustomerMutation, useReturnUdharMutation } =
-    customersApi
+export const {
+    useGetCustomersQuery,
+    useAddCustomerMutation,
+    useEditCustomerMutation,
+    useDeleteCustomerMutation,
+    useReturnUdharMutation,
+    useDeleteCustomerTransactionMutation
+} = customersApi
 
 export { unwrapData }

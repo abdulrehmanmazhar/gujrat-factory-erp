@@ -31,5 +31,5 @@ export const getCustomerById = CatchAsyncError(async (req: Request, res: Respons
 
 export const returnUdhar = CatchAsyncError(async (req: Request, res: Response) => {
     const udhar = await customerService.returnCustomerUdhar(param(req.params.id), req.body.returnUdhar, req.user!.id)
-    httpResponse(req, res, 200, `Udhar is now ${udhar} PKR`, { udhar })
+    httpResponse(req, res, 200, `Outstanding is now ${udhar} PKR`, { udhar })
 })

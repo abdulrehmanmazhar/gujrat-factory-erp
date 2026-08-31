@@ -15,6 +15,7 @@ import productSaleRouter from './routes/productSale.route.js'
 import supplierRouter from './routes/supplier.route.js'
 import restockRouter from './routes/restock.route.js'
 import whatsappRouter from './routes/whatsapp.route.js'
+import mediaRouter from './routes/media.route.js'
 import recipeRouter from './routes/recipe.route.js'
 import labourRouter from './routes/labour.route.js'
 import filesRouter from './routes/files.route.js'
@@ -54,6 +55,7 @@ app.use('/api/v1', productSaleRouter)
 app.use('/api/v1', supplierRouter)
 app.use('/api/v1', restockRouter)
 app.use('/api/v1', whatsappRouter)
+app.use('/api/v1', mediaRouter)
 app.use('/api/v1', recipeRouter)
 app.use('/api/v1', labourRouter)
 app.use('/api/v1', aiRouter)

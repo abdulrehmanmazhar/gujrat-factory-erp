@@ -4,7 +4,7 @@ import path from 'node:path'
 import { generatePDF } from 'pdf-node'
 import { eq } from 'drizzle-orm'
 import { db } from '../utils/db.js'
-import { customers, users } from '../models/tables.js'
+import { customers, customerTransactions, users } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
 import { moduleDir } from '../utils/esm.js'
 import * as orderService from './order.service.js'
@@ -17,17 +17,20 @@ import {
     receiptTitle as localizedReceiptTitle
 } from '../utils/documentI18n.js'
 import { getDocumentLanguage, readAppSettings } from '../utils/appSettings.js'
+import { computeCustomerOwed } from '../utils/ledger.js'
 import type { Request } from 'express'
 
 /** Max item rows on the first page (full header + optional receipt banner + footer). */
-export const ITEMS_FIRST_PAGE = 28
+export const ITEMS_FIRST_PAGE = 18
 /** Max item rows on continuation pages (compact header). */
-export const ITEMS_CONTINUATION_PAGE = 36
+export const ITEMS_CONTINUATION_PAGE = 24
 /** @deprecated use ITEMS_FIRST_PAGE — kept for callers that referenced the old constant */
 export const ITEMS_PER_SLIP = ITEMS_FIRST_PAGE
-const PDF_MARGIN_MM = 4
+const PDF_MARGIN_MM = 10
+const A4_WIDTH_MM = 210
 const A4_HEIGHT_MM = 297
-/** Full printable A4 height — one slip occupies the entire page */
+/** Printable A4 area after standard 10mm page margins */
+export const SLIP_WIDTH_MM = A4_WIDTH_MM - PDF_MARGIN_MM * 2
 export const SLIP_HEIGHT_MM = A4_HEIGHT_MM - PDF_MARGIN_MM * 2
 
 const templatesDir = path.join(moduleDir(import.meta.url), '../templates')
@@ -90,14 +93,29 @@ export async function buildInvoiceOrder(orderId: string) {
         .where(eq(users.id, order.createdById ?? order.createdBy))
         .limit(1)
 
+    const previousTxns = customer
+        ? await db
+              .select({ type: customerTransactions.type, amount: customerTransactions.amount, orderId: customerTransactions.orderId })
+              .from(customerTransactions)
+              .where(eq(customerTransactions.customerId, order.customerId))
+        : []
+    const previousDues = computeCustomerOwed(previousTxns.filter((txn) => txn.orderId !== orderId))
+
     return {
         ...order,
-        customer: customer ?? {
-            name: order.customerDetails?.name ?? 'Unknown',
-            contact: order.customerDetails?.contact ?? '—',
-            address: '—',
-            udhar: 0
-        },
+        customer: customer
+            ? {
+                  name: customer.name,
+                  contact: customer.contact,
+                  address: customer.address,
+                  udhar: previousDues
+              }
+            : {
+                  name: order.customerDetails?.name ?? 'Unknown',
+                  contact: order.customerDetails?.contact ?? '—',
+                  address: '—',
+                  udhar: 0
+              },
         orderBooker: booker?.name ?? order.userDetails?.name ?? 'Unknown',
         cart: order.cart ?? []
     }
@@ -121,7 +139,7 @@ function mapCartLines(cart: Array<Record<string, unknown>>) {
 }
 
 function firstPageCapacity(hasReceipt: boolean) {
-    return hasReceipt ? 22 : ITEMS_FIRST_PAGE
+    return hasReceipt ? 14 : ITEMS_FIRST_PAGE
 }
 
 function countOrderPages(lineCount: number, hasReceipt: boolean) {
@@ -260,6 +278,7 @@ export async function renderOrderDocumentPdf(
             labels,
             fontCss: getDocumentFontCss(documentLanguage),
             fontFamily: getDocumentFontFamily(documentLanguage),
+            pageWidthMm: `${SLIP_WIDTH_MM}mm`,
             pageHeightMm: `${SLIP_HEIGHT_MM}mm`,
             formatPage: (current: number, total: number) => formatDocPage(documentLanguage, current, total)
         },
@@ -268,8 +287,15 @@ export async function renderOrderDocumentPdf(
         buffer: true,
         pdfOptions: {
             format: 'A4',
+            width: `${A4_WIDTH_MM}mm`,
+            height: `${A4_HEIGHT_MM}mm`,
             orientation: 'portrait',
-            border: '4mm',
+            border: {
+                top: `${PDF_MARGIN_MM}mm`,
+                right: `${PDF_MARGIN_MM}mm`,
+                bottom: `${PDF_MARGIN_MM}mm`,
+                left: `${PDF_MARGIN_MM}mm`
+            },
             printBackground: true
         }
     })

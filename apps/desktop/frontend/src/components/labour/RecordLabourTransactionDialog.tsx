@@ -11,10 +11,11 @@ import type { LabourTransactionCategory } from '@/types/api'
 import { toast } from 'sonner'
 
 const CATEGORIES: { value: Exclude<LabourTransactionCategory, 'production'>; label: string }[] = [
-    { value: 'advance', label: 'Advance' },
-    { value: 'bonus', label: 'Bonus' },
-    { value: 'expense', label: 'Expense' },
-    { value: 'other', label: 'Other' }
+    { value: 'income', label: 'Income (In)' },
+    { value: 'advance', label: 'Advance (Out)' },
+    { value: 'bonus', label: 'Bonus (Out)' },
+    { value: 'expense', label: 'Expense (Out)' },
+    { value: 'other', label: 'Other (Out)' }
 ]
 
 export function RecordLabourTransactionDialog({
@@ -36,7 +37,7 @@ export function RecordLabourTransactionDialog({
     const [amount, setAmount] = useState('')
     const [description, setDescription] = useState('')
 
-    const labourers = labourersData?.labourers?.filter((l) => l.isActive) ?? []
+    const labourers = labourersData?.labourers ?? []
 
     useEffect(() => {
         if (!open) return
@@ -80,7 +81,8 @@ export function RecordLabourTransactionDialog({
                     onSubmit={handleSubmit}
                     className="space-y-4">
                     <p className="text-sm text-muted-foreground">
-                        Record advances, bonuses, expenses, or other labour-related payments outside production.
+                        Record standalone income (In) or advances, bonuses, expenses, and other payouts (Out). Production pay is created automatically
+                        when you log production.
                     </p>
 
                     <div className="space-y-2">

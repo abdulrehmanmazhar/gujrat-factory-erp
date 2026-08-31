@@ -4,11 +4,8 @@ import type { ApiEnvelope, Supplier } from '@/types/api'
 
 export const suppliersApi = apiSlice.injectEndpoints({
     endpoints: (builder) => ({
-        getSuppliers: builder.query<{ suppliers: Supplier[] }, boolean | void>({
-            query: (includeInactive) => ({
-                url: '/suppliers',
-                params: includeInactive ? { includeInactive: 'true' } : undefined
-            }),
+        getSuppliers: builder.query<{ suppliers: Supplier[] }, void>({
+            query: () => '/suppliers',
             transformResponse: (response: ApiEnvelope<{ suppliers: Supplier[] }>) => unwrapData(response),
             providesTags: ['Suppliers']
         }),
@@ -22,18 +19,18 @@ export const suppliersApi = apiSlice.injectEndpoints({
             { name: string; contact: string; businessName?: string; address?: string; notes?: string }
         >({
             query: (body) => ({ url: '/suppliers', method: 'POST', body }),
-            invalidatesTags: ['Suppliers']
+            invalidatesTags: ['Suppliers', 'Analytics']
         }),
         updateSupplier: builder.mutation<
             ApiEnvelope<{ supplier: Supplier }>,
             { id: string; name?: string; contact?: string; businessName?: string; address?: string; notes?: string }
         >({
             query: ({ id, ...body }) => ({ url: `/suppliers/${id}`, method: 'PUT', body }),
-            invalidatesTags: ['Suppliers']
+            invalidatesTags: ['Suppliers', 'Analytics']
         }),
-        deactivateSupplier: builder.mutation<ApiEnvelope<{ supplier: Supplier }>, string>({
+        deleteSupplier: builder.mutation<ApiEnvelope<null>, string>({
             query: (id) => ({ url: `/suppliers/${id}`, method: 'DELETE' }),
-            invalidatesTags: ['Suppliers']
+            invalidatesTags: ['Suppliers', 'Analytics']
         }),
         linkSupplierProduct: builder.mutation<
             ApiEnvelope<null>,
@@ -72,7 +69,7 @@ export const {
     useGetSupplierQuery,
     useCreateSupplierMutation,
     useUpdateSupplierMutation,
-    useDeactivateSupplierMutation,
+    useDeleteSupplierMutation,
     useLinkSupplierProductMutation,
     useLinkSupplierProductsByCategoriesMutation,
     useUnlinkSupplierProductMutation

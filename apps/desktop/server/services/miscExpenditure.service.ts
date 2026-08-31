@@ -1,10 +1,26 @@
-import { getClient } from '../utils/db.js'
+import { asc, count, eq, isNull, sum } from 'drizzle-orm'
+import { db, getClient } from '../utils/db.js'
+import { miscExpenditureCategories, miscellaneousExpenditures } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
-import { createId } from '../utils/mappers.js'
+import { createId, withLegacyId } from '../utils/mappers.js'
 import { deleteRemoteFile } from '../utils/rclone.js'
 
 export const PAYMENT_MODES = ['cash', 'online'] as const
 export type PaymentMode = (typeof PAYMENT_MODES)[number]
+
+export type MiscExpenditureCategoryNode = {
+    id: string
+    _id: string
+    name: string
+    parentId: string | null
+    sortOrder: number
+    path: string
+    children: MiscExpenditureCategoryNode[]
+    expenditureCount: number
+    expenditureTotal: number
+    createdAt: Date
+    updatedAt: Date
+}
 
 function assertPaymentMode(value: string): PaymentMode {
     if (!PAYMENT_MODES.includes(value as PaymentMode)) {
@@ -13,17 +29,236 @@ function assertPaymentMode(value: string): PaymentMode {
     return value as PaymentMode
 }
 
-function mapCategory(row: Record<string, unknown>) {
+async function listFlatMiscCategories() {
+    return db
+        .select()
+        .from(miscExpenditureCategories)
+        .orderBy(asc(miscExpenditureCategories.sortOrder), asc(miscExpenditureCategories.name))
+}
+
+async function assertSiblingNameUnique(name: string, parentId: string | null, excludeId?: string) {
+    const siblings =
+        parentId == null
+            ? await db.select().from(miscExpenditureCategories).where(isNull(miscExpenditureCategories.parentId))
+            : await db.select().from(miscExpenditureCategories).where(eq(miscExpenditureCategories.parentId, parentId))
+
+    const conflict = siblings.find((row) => row.id !== excludeId && row.name.toLowerCase() === name.toLowerCase())
+    if (conflict) throw new AppError('A category with this name already exists under the same parent', 400)
+}
+
+async function getMiscCategoryById(id: string) {
+    const [row] = await db.select().from(miscExpenditureCategories).where(eq(miscExpenditureCategories.id, id)).limit(1)
+    return row ?? null
+}
+
+async function assertMiscCategoryExists(id: string) {
+    const category = await getMiscCategoryById(id)
+    if (!category) throw new AppError('Category not found', 400)
+    return category
+}
+
+async function buildMiscCategoryPathMap(rows?: Awaited<ReturnType<typeof listFlatMiscCategories>>) {
+    const all = rows ?? (await listFlatMiscCategories())
+    const byId = new Map(all.map((row) => [row.id, row]))
+    const pathById = new Map<string, string>()
+
+    const resolvePath = (id: string, stack = new Set<string>()): string => {
+        if (pathById.has(id)) return pathById.get(id)!
+        if (stack.has(id)) return byId.get(id)?.name ?? ''
+        const row = byId.get(id)
+        if (!row) return ''
+        stack.add(id)
+        const path = row.parentId ? `${resolvePath(row.parentId, stack)} / ${row.name}` : row.name
+        pathById.set(id, path)
+        return path
+    }
+
+    for (const row of all) resolvePath(row.id)
+    return { all, byId, pathById }
+}
+
+export async function getDescendantCategoryIds(categoryId: string) {
+    const all = await listFlatMiscCategories()
+    const childrenByParent = new Map<string | null, string[]>()
+    for (const row of all) {
+        const key = row.parentId ?? null
+        const list = childrenByParent.get(key) ?? []
+        list.push(row.id)
+        childrenByParent.set(key, list)
+    }
+
+    const result = new Set<string>([categoryId])
+    const stack = [categoryId]
+    while (stack.length) {
+        const current = stack.pop()!
+        for (const childId of childrenByParent.get(current) ?? []) {
+            if (!result.has(childId)) {
+                result.add(childId)
+                stack.push(childId)
+            }
+        }
+    }
+    return [...result]
+}
+
+async function wouldCreateCycle(categoryId: string, newParentId: string | null) {
+    if (!newParentId) return false
+    if (newParentId === categoryId) return true
+    const descendants = await getDescendantCategoryIds(categoryId)
+    return descendants.includes(newParentId)
+}
+
+function toCategoryDto(
+    row: typeof miscExpenditureCategories.$inferSelect,
+    path: string,
+    extras?: { children?: MiscExpenditureCategoryNode[]; expenditureCount?: number; expenditureTotal?: number }
+): MiscExpenditureCategoryNode {
     return {
-        id: String(row.id),
-        _id: String(row.id),
-        name: String(row.name),
-        createdAt: new Date(Number(row.created_at)).toISOString(),
-        updatedAt: new Date(Number(row.updated_at)).toISOString()
+        ...withLegacyId(row),
+        parentId: row.parentId ?? null,
+        path,
+        children: extras?.children ?? [],
+        expenditureCount: extras?.expenditureCount ?? 0,
+        expenditureTotal: extras?.expenditureTotal ?? 0
     }
 }
 
-async function getExpenditureWithCreator(id: string) {
+export async function listMiscExpenditureCategories(): Promise<MiscExpenditureCategoryNode[]> {
+    const { all, pathById } = await buildMiscCategoryPathMap()
+    const counts = await db
+        .select({
+            categoryId: miscellaneousExpenditures.categoryId,
+            total: count(),
+            amount: sum(miscellaneousExpenditures.amount)
+        })
+        .from(miscellaneousExpenditures)
+        .groupBy(miscellaneousExpenditures.categoryId)
+
+    const countByCategoryId = new Map<string, number>()
+    const amountByCategoryId = new Map<string, number>()
+    for (const row of counts) {
+        if (!row.categoryId) continue
+        countByCategoryId.set(row.categoryId, Number(row.total) || 0)
+        amountByCategoryId.set(row.categoryId, Number(row.amount) || 0)
+    }
+
+    const nodes = new Map<string, MiscExpenditureCategoryNode>()
+    for (const row of all) {
+        nodes.set(row.id, toCategoryDto(row, pathById.get(row.id) ?? row.name))
+    }
+
+    const roots: MiscExpenditureCategoryNode[] = []
+    for (const node of nodes.values()) {
+        if (node.parentId && nodes.has(node.parentId)) {
+            nodes.get(node.parentId)!.children.push(node)
+        } else {
+            roots.push(node)
+        }
+    }
+
+    const sortRecursive = (items: MiscExpenditureCategoryNode[]) => {
+        items.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+        for (const item of items) sortRecursive(item.children)
+    }
+    sortRecursive(roots)
+
+    const applySubtreeTotals = (node: MiscExpenditureCategoryNode): { count: number; amount: number } => {
+        let countTotal = countByCategoryId.get(node.id) ?? 0
+        let amountTotal = amountByCategoryId.get(node.id) ?? 0
+        for (const child of node.children) {
+            const nested = applySubtreeTotals(child)
+            countTotal += nested.count
+            amountTotal += nested.amount
+        }
+        node.expenditureCount = countTotal
+        node.expenditureTotal = amountTotal
+        return { count: countTotal, amount: amountTotal }
+    }
+    for (const root of roots) applySubtreeTotals(root)
+
+    return roots
+}
+
+export async function createMiscExpenditureCategory(data: { name: string; parentId?: string | null; sortOrder?: number }) {
+    const name = data.name.trim()
+    if (!name) throw new AppError('Category name is required', 400)
+
+    const parentId = data.parentId?.trim() || null
+    if (parentId) await assertMiscCategoryExists(parentId)
+    await assertSiblingNameUnique(name, parentId)
+
+    let sortOrder = data.sortOrder
+    if (sortOrder == null || !Number.isFinite(sortOrder)) {
+        const siblings =
+            parentId == null
+                ? await db.select().from(miscExpenditureCategories).where(isNull(miscExpenditureCategories.parentId))
+                : await db.select().from(miscExpenditureCategories).where(eq(miscExpenditureCategories.parentId, parentId))
+        sortOrder = siblings.reduce((max, row) => Math.max(max, row.sortOrder), -1) + 1
+    }
+
+    const [created] = await db
+        .insert(miscExpenditureCategories)
+        .values({
+            id: createId(),
+            name,
+            parentId,
+            sortOrder
+        } as typeof miscExpenditureCategories.$inferInsert)
+        .returning()
+
+    const { pathById } = await buildMiscCategoryPathMap()
+    return toCategoryDto(created, pathById.get(created.id) ?? created.name)
+}
+
+export async function updateMiscExpenditureCategory(
+    id: string,
+    data: { name?: string; parentId?: string | null; sortOrder?: number }
+) {
+    const existing = await assertMiscCategoryExists(id)
+    const name = data.name != null ? data.name.trim() : existing.name
+    if (!name) throw new AppError('Category name is required', 400)
+
+    const parentId = data.parentId === undefined ? (existing.parentId ?? null) : data.parentId?.trim() || null
+    if (parentId) await assertMiscCategoryExists(parentId)
+    if (await wouldCreateCycle(id, parentId)) {
+        throw new AppError('Cannot move a category under one of its descendants', 400)
+    }
+    await assertSiblingNameUnique(name, parentId, id)
+
+    const sortOrder = data.sortOrder != null && Number.isFinite(data.sortOrder) ? data.sortOrder : existing.sortOrder
+
+    const [updated] = await db
+        .update(miscExpenditureCategories)
+        .set({
+            name,
+            parentId,
+            sortOrder,
+            updatedAt: new Date()
+        } as Partial<typeof miscExpenditureCategories.$inferInsert> & { updatedAt: Date })
+        .where(eq(miscExpenditureCategories.id, id))
+        .returning()
+
+    const { pathById } = await buildMiscCategoryPathMap()
+    return toCategoryDto(updated, pathById.get(updated.id) ?? updated.name)
+}
+
+export async function deleteMiscExpenditureCategory(id: string) {
+    await assertMiscCategoryExists(id)
+
+    const [child] = await db.select().from(miscExpenditureCategories).where(eq(miscExpenditureCategories.parentId, id)).limit(1)
+    if (child) throw new AppError('Remove or reassign subcategories before deleting this category', 400)
+
+    const [linked] = await db
+        .select({ id: miscellaneousExpenditures.id })
+        .from(miscellaneousExpenditures)
+        .where(eq(miscellaneousExpenditures.categoryId, id))
+        .limit(1)
+    if (linked) throw new AppError('Reassign expenditures away from this category before deleting it', 400)
+
+    await db.delete(miscExpenditureCategories).where(eq(miscExpenditureCategories.id, id))
+}
+
+async function getExpenditureWithCreator(id: string, pathById?: Map<string, string>) {
     const client = getClient()
     const result = await client.execute({
         sql: `
@@ -56,6 +291,9 @@ async function getExpenditureWithCreator(id: string) {
     const row = result.rows[0] as Record<string, unknown> | undefined
     if (!row) return null
 
+    const categoryId = row.category_row_id ? String(row.category_row_id) : null
+    const categoryName = row.category_name ? String(row.category_name) : ''
+
     return {
         id: String(row.id),
         _id: String(row.id),
@@ -63,11 +301,12 @@ async function getExpenditureWithCreator(id: string) {
         paymentMode: String(row.payment_mode) as PaymentMode,
         note: String(row.note),
         categoryId: row.category_id ? String(row.category_id) : null,
-        category: row.category_row_id
+        category: categoryId
             ? {
-                  id: String(row.category_row_id),
-                  _id: String(row.category_row_id),
-                  name: String(row.category_name)
+                  id: categoryId,
+                  _id: categoryId,
+                  name: categoryName,
+                  path: pathById?.get(categoryId) ?? categoryName
               }
             : null,
         proofImage: row.proof_image ? String(row.proof_image) : null,
@@ -88,44 +327,6 @@ async function getExpenditureWithCreator(id: string) {
     }
 }
 
-export async function listMiscExpenditureCategories() {
-    const result = await getClient().execute({
-        sql: `
-            SELECT id, name, created_at, updated_at
-            FROM misc_expenditure_categories
-            ORDER BY name COLLATE NOCASE ASC
-        `
-    })
-    return result.rows.map((row) => mapCategory(row as unknown as Record<string, unknown>))
-}
-
-export async function createMiscExpenditureCategory(name: string) {
-    const trimmed = name.trim()
-    if (!trimmed) throw new AppError('Category name is required', 400)
-
-    const existing = await getClient().execute({
-        sql: `SELECT id FROM misc_expenditure_categories WHERE lower(name) = lower(?) LIMIT 1`,
-        args: [trimmed]
-    })
-    if (existing.rows[0]) throw new AppError('A category with this name already exists', 400)
-
-    const id = createId()
-    const now = Date.now()
-    await getClient().execute({
-        sql: `
-            INSERT INTO misc_expenditure_categories (id, name, created_at, updated_at)
-            VALUES (?, ?, ?, ?)
-        `,
-        args: [id, trimmed, now, now]
-    })
-
-    const created = await getClient().execute({
-        sql: `SELECT id, name, created_at, updated_at FROM misc_expenditure_categories WHERE id = ? LIMIT 1`,
-        args: [id]
-    })
-    return mapCategory(created.rows[0] as unknown as Record<string, unknown>)
-}
-
 export async function listMiscellaneousExpenditures() {
     const client = getClient()
     const result = await client.execute({
@@ -136,7 +337,10 @@ export async function listMiscellaneousExpenditures() {
         `
     })
 
-    const rows = await Promise.all(result.rows.map(async (row) => getExpenditureWithCreator(String((row as unknown as { id: string }).id))))
+    const { pathById } = await buildMiscCategoryPathMap()
+    const rows = await Promise.all(
+        result.rows.map(async (row) => getExpenditureWithCreator(String((row as unknown as { id: string }).id), pathById))
+    )
 
     return rows.filter(Boolean)
 }
@@ -163,11 +367,7 @@ export async function createMiscellaneousExpenditure(data: {
     const categoryId = String(data.categoryId ?? '').trim()
     if (!categoryId) throw new AppError('Category is required', 400)
 
-    const category = await getClient().execute({
-        sql: `SELECT id FROM misc_expenditure_categories WHERE id = ? LIMIT 1`,
-        args: [categoryId]
-    })
-    if (!category.rows[0]) throw new AppError('Category not found', 400)
+    await assertMiscCategoryExists(categoryId)
 
     const paymentMode = assertPaymentMode(data.paymentMode)
     const id = createId()
@@ -182,7 +382,8 @@ export async function createMiscellaneousExpenditure(data: {
         args: [id, amount, paymentMode, note, categoryId, data.proofImage ?? null, data.proofImagePublicId ?? null, data.createdById, now, now]
     })
 
-    return getExpenditureWithCreator(id)
+    const { pathById } = await buildMiscCategoryPathMap()
+    return getExpenditureWithCreator(id, pathById)
 }
 
 export async function deleteMiscellaneousExpenditure(id: string) {

@@ -3,25 +3,31 @@ import { AiChatSidebar } from '@/components/ai/AiChatSidebar'
 import { AnalyticsChart } from '@/components/ai/AnalyticsChart'
 import { GeminiApiKeyDialog } from '@/components/ai/GeminiApiKeyDialog'
 import { GeminiModelSelect } from '@/components/ai/GeminiModelSelect'
+import { OllamaSetupDialog } from '@/components/ai/OllamaSetupDialog'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Badge } from '@/components/ui/badge'
 import { getApiErrorMessage } from '@/lib/errors'
 import type { AiChatResponse } from '@/lib/aiSchemas'
+import { usePermissions } from '@/hooks/usePermissions'
 import {
     useDeleteAiSessionMutation,
+    useGetAiProviderStatusQuery,
     useGetAiSessionQuery,
     useGetAiSessionsQuery,
-    useGetGeminiKeyStatusQuery,
     useGetGeminiModelsQuery,
     useRemoveGeminiApiKeyMutation,
     useSaveGeminiModelMutation,
-    useSendAiChatMutation
+    useSaveOllamaSettingsMutation,
+    useSendAiChatMutation,
+    useSetAiProviderMutation,
+    type AiProvider
 } from '@/redux/api/aiApi'
-import { Bot, KeyRound, Loader2, LogOut, Send, User } from 'lucide-react'
+import { Bot, KeyRound, Loader2, LogOut, Server, Send, User } from 'lucide-react'
 import { toast } from 'sonner'
 
 const WELCOME_MESSAGE =
@@ -51,15 +57,31 @@ function mapStoredMessages(
 }
 
 export default function AiAnalyticsPage() {
-    const { data: geminiStatus, isLoading: loadingStatus } = useGetGeminiKeyStatusQuery()
+    const { canWrite, canDelete } = usePermissions()
+    const {
+        data: providerStatus,
+        isLoading: loadingStatus,
+        refetch: refetchProvider
+    } = useGetAiProviderStatusQuery({
+        probeOllama: true
+    })
     const { data: sessionsData, isLoading: loadingSessions } = useGetAiSessionsQuery()
-    const { data: modelsData } = useGetGeminiModelsQuery(undefined, {
-        skip: !geminiStatus?.configured
+
+    const provider: AiProvider = providerStatus?.provider ?? 'gemini'
+    const geminiConfigured = Boolean(providerStatus?.gemini.configured)
+    const ollamaConfigured = Boolean(providerStatus?.ollama.configured && providerStatus?.ollama.reachable !== false)
+    const configured = provider === 'gemini' ? geminiConfigured : Boolean(providerStatus?.ollama.model)
+
+    const { data: geminiModelsData } = useGetGeminiModelsQuery(undefined, {
+        skip: provider !== 'gemini' || !geminiConfigured
     })
 
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
     const [initializedSelection, setInitializedSelection] = useState(false)
     const [keyDialogOpen, setKeyDialogOpen] = useState(false)
+    const [keyPromptDismissed, setKeyPromptDismissed] = useState(false)
+    const [ollamaDialogOpen, setOllamaDialogOpen] = useState(false)
+    const [ollamaPromptDismissed, setOllamaPromptDismissed] = useState(false)
     const [input, setInput] = useState('')
     const [pendingMessages, setPendingMessages] = useState<ChatMessage[]>([])
     const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
@@ -68,22 +90,36 @@ export default function AiAnalyticsPage() {
         skip: !activeSessionId
     })
 
+    const [setProvider, { isLoading: switchingProvider }] = useSetAiProviderMutation()
     const [removeKey, { isLoading: removingKey }] = useRemoveGeminiApiKeyMutation()
-    const [saveModel, { isLoading: savingModel }] = useSaveGeminiModelMutation()
+    const [saveGeminiModel, { isLoading: savingGeminiModel }] = useSaveGeminiModelMutation()
+    const [saveOllama, { isLoading: savingOllamaModel }] = useSaveOllamaSettingsMutation()
     const [deleteSession] = useDeleteAiSessionMutation()
     const [sendChat, { isLoading: sending }] = useSendAiChatMutation()
 
     const bottomRef = useRef<HTMLDivElement>(null)
-    const configured = Boolean(geminiStatus?.configured)
-    const model = geminiStatus?.model ?? 'gemini-2.5-flash'
-    const models = modelsData?.models ?? []
+    const geminiModel = providerStatus?.gemini.model ?? 'gemini-2.5-flash'
+    const ollamaModel = providerStatus?.ollama.model ?? ''
+    const ollamaBaseUrl = providerStatus?.ollama.baseUrl ?? providerStatus?.ollama.displayUrl ?? 'http://127.0.0.1:11434'
+    const ollamaDisplayUrl = providerStatus?.ollama.displayUrl ?? ollamaBaseUrl
+    const geminiModels = geminiModelsData?.models ?? []
+    const ollamaModels = providerStatus?.ollama.models ?? []
     const sessions = sessionsData?.sessions ?? []
+    const activeModel = provider === 'gemini' ? geminiModel : ollamaModel || 'No model'
 
     useEffect(() => {
-        if (!loadingStatus && !configured) {
-            setKeyDialogOpen(true)
-        }
-    }, [loadingStatus, configured])
+        if (loadingStatus) return
+        if (provider === 'gemini' && !geminiConfigured && !keyPromptDismissed) setKeyDialogOpen(true)
+        if (provider === 'ollama' && !configured && !ollamaPromptDismissed) setOllamaDialogOpen(true)
+    }, [loadingStatus, provider, geminiConfigured, configured, keyPromptDismissed, ollamaPromptDismissed])
+
+    useEffect(() => {
+        if (geminiConfigured) setKeyPromptDismissed(false)
+    }, [geminiConfigured])
+
+    useEffect(() => {
+        if (configured && provider === 'ollama') setOllamaPromptDismissed(false)
+    }, [configured, provider])
 
     useEffect(() => {
         if (initializedSelection || loadingSessions) return
@@ -139,13 +175,42 @@ export default function AiAnalyticsPage() {
         }
     }
 
-    const handleModelChange = async (nextModel: string) => {
-        if (nextModel === model || savingModel) return
+    const handleProviderChange = async (next: AiProvider) => {
+        if (next === provider || switchingProvider) return
         try {
-            await saveModel({ model: nextModel }).unwrap()
+            await setProvider({ provider: next }).unwrap()
+            toast.success(next === 'gemini' ? 'Using Gemini' : 'Using local Ollama')
+            if (next === 'gemini' && !geminiConfigured) {
+                setKeyPromptDismissed(false)
+                setKeyDialogOpen(true)
+            }
+            if (next === 'ollama' && !ollamaConfigured) {
+                setOllamaPromptDismissed(false)
+                setOllamaDialogOpen(true)
+            }
+            void refetchProvider()
+        } catch (err) {
+            toast.error(getApiErrorMessage(err, 'Could not switch provider'))
+        }
+    }
+
+    const handleGeminiModelChange = async (nextModel: string) => {
+        if (nextModel === geminiModel || savingGeminiModel) return
+        try {
+            await saveGeminiModel({ model: nextModel }).unwrap()
             toast.success('Gemini model updated')
         } catch (err) {
             toast.error(getApiErrorMessage(err, 'Could not update model'))
+        }
+    }
+
+    const handleOllamaModelChange = async (nextModel: string) => {
+        if (nextModel === ollamaModel || savingOllamaModel) return
+        try {
+            await saveOllama({ baseUrl: ollamaBaseUrl, model: nextModel, setActive: true }).unwrap()
+            toast.success('Ollama model updated')
+        } catch (err) {
+            toast.error(getApiErrorMessage(err, 'Could not update Ollama model'))
         }
     }
 
@@ -153,6 +218,7 @@ export default function AiAnalyticsPage() {
         try {
             await removeKey().unwrap()
             toast.success('Gemini API key removed')
+            setKeyPromptDismissed(false)
             setKeyDialogOpen(true)
         } catch (err) {
             toast.error(getApiErrorMessage(err, 'Could not remove API key'))
@@ -164,8 +230,13 @@ export default function AiAnalyticsPage() {
         if (!text || sending) return
 
         if (!configured) {
-            setKeyDialogOpen(true)
-            toast.error('Add your Gemini API key first')
+            if (provider === 'gemini') {
+                setKeyDialogOpen(true)
+                toast.error('Add your Gemini API key first')
+            } else {
+                setOllamaDialogOpen(true)
+                toast.error('Configure local Ollama first')
+            }
             return
         }
 
@@ -202,42 +273,92 @@ export default function AiAnalyticsPage() {
             <div className="flex h-[calc(100vh-7rem)] flex-col gap-4">
                 <PageHeader
                     title="AI Analytics"
-                    description="Business intelligence powered by Google Gemini — query your ERP data in natural language"
+                    description="Query your ERP with Google Gemini or a local Ollama model"
                     actions={
                         <div className="flex flex-wrap items-center gap-2">
-                            {configured ? (
-                                <>
-                                    <GeminiModelSelect
-                                        models={models}
-                                        value={model}
-                                        onValueChange={(next) => void handleModelChange(next)}
-                                        disabled={savingModel || models.length === 0}
-                                    />
-                                    <Badge variant="secondary">Key saved</Badge>
+                            <Select
+                                value={provider}
+                                onValueChange={(value) => void handleProviderChange(value as AiProvider)}
+                                disabled={!canWrite || switchingProvider}>
+                                <SelectTrigger className="w-[150px]">
+                                    <SelectValue placeholder="Provider" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="gemini">Gemini</SelectItem>
+                                    <SelectItem value="ollama">Ollama</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            {provider === 'gemini' ? (
+                                configured ? (
+                                    <>
+                                        <GeminiModelSelect
+                                            models={geminiModels}
+                                            value={geminiModel}
+                                            onValueChange={(next) => void handleGeminiModelChange(next)}
+                                            disabled={!canWrite || savingGeminiModel || geminiModels.length === 0}
+                                        />
+                                        <Badge variant="secondary">Key saved</Badge>
+                                        {canWrite ? (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setKeyDialogOpen(true)}>
+                                                <KeyRound className="mr-2 size-4" />
+                                                Change key
+                                            </Button>
+                                        ) : null}
+                                        {canDelete ? (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={removingKey}
+                                                onClick={() => void handleRemoveKey()}>
+                                                <LogOut className="mr-2 size-4" />
+                                                Remove key
+                                            </Button>
+                                        ) : null}
+                                    </>
+                                ) : canWrite ? (
                                     <Button
-                                        variant="outline"
                                         size="sm"
                                         onClick={() => setKeyDialogOpen(true)}>
                                         <KeyRound className="mr-2 size-4" />
-                                        Change key
+                                        Add Gemini API key
                                     </Button>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={removingKey}
-                                        onClick={() => void handleRemoveKey()}>
-                                        <LogOut className="mr-2 size-4" />
-                                        Remove key
-                                    </Button>
+                                ) : null
+                            ) : configured ? (
+                                <>
+                                    <GeminiModelSelect
+                                        models={ollamaModels}
+                                        value={ollamaModel}
+                                        onValueChange={(next) => void handleOllamaModelChange(next)}
+                                        disabled={!canWrite || savingOllamaModel || ollamaModels.length === 0}
+                                    />
+                                    <Badge
+                                        variant="secondary"
+                                        className="max-w-[220px] truncate"
+                                        title={ollamaDisplayUrl}>
+                                        {ollamaDisplayUrl}
+                                    </Badge>
+                                    {canWrite ? (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setOllamaDialogOpen(true)}>
+                                            <Server className="mr-2 size-4" />
+                                            Ollama settings
+                                        </Button>
+                                    ) : null}
                                 </>
-                            ) : (
+                            ) : canWrite ? (
                                 <Button
                                     size="sm"
-                                    onClick={() => setKeyDialogOpen(true)}>
-                                    <KeyRound className="mr-2 size-4" />
-                                    Add Gemini API key
+                                    onClick={() => setOllamaDialogOpen(true)}>
+                                    <Server className="mr-2 size-4" />
+                                    Connect Ollama
                                 </Button>
-                            )}
+                            ) : null}
                         </div>
                     }
                 />
@@ -255,6 +376,9 @@ export default function AiAnalyticsPage() {
 
                     <Card className="flex min-h-0 min-w-0 flex-1 flex-col">
                         <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-4">
+                            <div className="text-xs text-muted-foreground">
+                                Active: {provider === 'gemini' ? 'Gemini' : 'Ollama'} · {activeModel}
+                            </div>
                             <ScrollArea className="min-h-0 flex-1 pr-3">
                                 <div className="space-y-4">
                                     {showWelcome ? (
@@ -327,9 +451,11 @@ export default function AiAnalyticsPage() {
                                     placeholder={
                                         configured
                                             ? 'e.g. Show monthly sales for the last 3 months as a line chart'
-                                            : 'Add your Gemini API key to start chatting'
+                                            : provider === 'gemini'
+                                              ? 'Add your Gemini API key to start chatting'
+                                              : 'Connect local Ollama to start chatting'
                                     }
-                                    disabled={!configured || sending}
+                                    disabled={!configured || sending || !canWrite}
                                     rows={2}
                                     className="min-h-[60px] resize-none"
                                     onKeyDown={(e) => {
@@ -341,7 +467,7 @@ export default function AiAnalyticsPage() {
                                 />
                                 <Button
                                     type="button"
-                                    disabled={!configured || sending || !input.trim()}
+                                    disabled={!configured || sending || !input.trim() || !canWrite}
                                     onClick={() => void handleSend()}
                                     className="self-end">
                                     {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
@@ -354,9 +480,22 @@ export default function AiAnalyticsPage() {
 
             <GeminiApiKeyDialog
                 open={keyDialogOpen}
-                onOpenChange={setKeyDialogOpen}
-                initialModel={model}
-                required={!configured}
+                onOpenChange={(open) => {
+                    setKeyDialogOpen(open)
+                    if (!open) setKeyPromptDismissed(true)
+                }}
+                initialModel={geminiModel}
+                required={provider === 'gemini' && !geminiConfigured}
+            />
+            <OllamaSetupDialog
+                open={ollamaDialogOpen}
+                onOpenChange={(open) => {
+                    setOllamaDialogOpen(open)
+                    if (!open) setOllamaPromptDismissed(true)
+                }}
+                initialBaseUrl={ollamaBaseUrl}
+                initialModel={ollamaModel}
+                required={provider === 'ollama' && !configured}
             />
         </>
     )

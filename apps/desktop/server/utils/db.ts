@@ -28,6 +28,7 @@ let dbInstance: LibSQLDatabase<typeof schema> | null = null
 export function getClient(): Client {
     if (!clientInstance) {
         clientInstance = createClient({ url: dbUrl })
+        void clientInstance.execute('PRAGMA foreign_keys = ON')
     }
     return clientInstance
 }
@@ -68,11 +69,13 @@ async function runMigrations() {
 
 export async function connectDB() {
     try {
+        await getClient().execute('PRAGMA foreign_keys = ON')
         await getClient().execute('SELECT 1')
         await runMigrations()
         logger.info('Database connected', { meta: { url: dbUrl } })
     } catch (error) {
         logger.error('Database connection failed', { meta: { error } })
+        if (process.env.NODE_ENV === 'test') throw error
         setTimeout(connectDB, 5000)
     }
 }

@@ -4,7 +4,7 @@ import { db } from '../utils/db.js'
 import { customerTransactions, customers, supplierTransactions, suppliers } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
 import { createId, withLegacyId } from '../utils/mappers.js'
-import { adjustCustomerUdhar, adjustSupplierPayable } from '../utils/ledger.js'
+import { loadCustomerOwed, loadSupplierPayable } from '../utils/ledger.js'
 import { deleteRemoteFile } from '../utils/rclone.js'
 import type { PaymentProofFields } from '../utils/paymentMode.js'
 import { readAppSettings } from '../utils/appSettings.js'
@@ -31,7 +31,7 @@ function buildCustomerKhataWhatsApp(
         direction: KhataDirection
         amount: number
         paymentMode: string
-        remainingUdhar: number
+        remainingBalance: number
         note?: string
     }
 ) {
@@ -40,7 +40,7 @@ function buildCustomerKhataWhatsApp(
         payload.direction === 'in' ? (lang === 'ur' ? 'وصولی (ان)' : 'Received (In)') : lang === 'ur' ? 'ادائیگی (آؤٹ)' : 'Paid out (Out)'
     const amountLabel = lang === 'ur' ? 'رقم' : 'Amount'
     const modeLabel = lang === 'ur' ? 'طریقہ' : 'Mode'
-    const balanceLabel = lang === 'ur' ? 'بقایا ادھار' : 'Remaining udhar'
+    const balanceLabel = lang === 'ur' ? 'بقایا بیلنس' : 'Remaining balance'
     const noteLabel = lang === 'ur' ? 'نوٹ' : 'Note'
     const thankYou = lang === 'ur' ? 'شکریہ!' : 'Thank you!'
 
@@ -50,7 +50,7 @@ function buildCustomerKhataWhatsApp(
         payload.customerName,
         `${directionLabel}: PKR ${payload.amount.toLocaleString()}`,
         `${modeLabel}: ${payload.paymentMode}`,
-        `${balanceLabel}: PKR ${payload.remainingUdhar.toLocaleString()}`
+        `${balanceLabel}: PKR ${payload.remainingBalance.toLocaleString()}`
     ]
     if (payload.note?.trim()) {
         lines.push(`${noteLabel}: ${payload.note.trim()}`)
@@ -83,7 +83,7 @@ export async function listCustomerKhata(filters?: { from?: string; to?: string; 
                 direction,
                 partyName: customer?.name ?? '—',
                 balanceImpact: direction === 'in' ? 'udhar −' : 'udhar +',
-                customer: customer ? { id: customer.id, name: customer.name, udhar: customer.udhar } : null
+                customer: customer ? { id: customer.id, name: customer.name } : null
             }
         })
         .filter((row) => {
@@ -121,7 +121,7 @@ export async function listSupplierKhata(filters?: { from?: string; to?: string; 
                 direction,
                 partyName: supplier?.name ?? '—',
                 balanceImpact: direction === 'out' ? 'payable −' : 'payable +',
-                supplier: supplier ? { id: supplier.id, name: supplier.name, payable: supplier.payable } : null
+                supplier: supplier ? { id: supplier.id, name: supplier.name } : null
             }
         })
         .filter((row) => {
@@ -156,8 +156,9 @@ export async function createCustomerKhataEntry(data: {
         if (!customer) throw new AppError('Customer not found', 404)
 
         const type = data.direction === 'in' ? 'udhar_payment' : 'refund'
-        if (data.direction === 'in' && data.amount > (customer.udhar ?? 0)) {
-            throw new AppError('Cannot receive more than current udhar', 400)
+        const currentOwed = await loadCustomerOwed(tx, data.customerId)
+        if (data.direction === 'in' && data.amount > currentOwed) {
+            throw new AppError('Cannot receive more than current outstanding balance', 400)
         }
 
         const description =
@@ -182,13 +183,12 @@ export async function createCustomerKhataEntry(data: {
             })
             .returning()
 
-        const balanceDelta = data.direction === 'in' ? -data.amount : data.amount
-        const remainingUdhar = await adjustCustomerUdhar(tx, data.customerId, balanceDelta)
+        const remainingBalance = await loadCustomerOwed(tx, data.customerId)
 
         return {
             transaction: withLegacyId(transaction),
             customer,
-            remainingUdhar,
+            remainingBalance,
             direction: data.direction
         }
     })
@@ -202,7 +202,7 @@ export async function createCustomerKhataEntry(data: {
                 direction: result.direction,
                 amount: data.amount,
                 paymentMode: data.proof.paymentMode,
-                remainingUdhar: result.remainingUdhar,
+                remainingBalance: result.remainingBalance,
                 note: data.description
             })
             const { enqueueWhatsAppText } = await import('../utils/whatsappQueue.js')
@@ -218,7 +218,7 @@ export async function createCustomerKhataEntry(data: {
         direction: result.direction,
         partyName: result.customer.name,
         balanceImpact: result.direction === 'in' ? 'udhar −' : 'udhar +',
-        remainingBalance: result.remainingUdhar
+        remainingBalance: result.remainingBalance
     }
 }
 
@@ -243,7 +243,8 @@ export async function createSupplierKhataEntry(data: {
         if (!supplier) throw new AppError('Supplier not found', 404)
 
         const type = data.direction === 'out' ? 'payment' : 'refund'
-        if (data.direction === 'out' && data.amount > (supplier.payable ?? 0)) {
+        const currentPayable = await loadSupplierPayable(tx, data.supplierId)
+        if (data.direction === 'out' && data.amount > currentPayable) {
             throw new AppError('Cannot pay more than current payable', 400)
         }
 
@@ -269,8 +270,7 @@ export async function createSupplierKhataEntry(data: {
             })
             .returning()
 
-        const balanceDelta = data.direction === 'out' ? -data.amount : data.amount
-        const remainingPayable = await adjustSupplierPayable(tx, data.supplierId, balanceDelta)
+        const remainingPayable = await loadSupplierPayable(tx, data.supplierId)
 
         return {
             ...withLegacyId(transaction),
@@ -290,8 +290,6 @@ export async function deleteKhataEntry(party: KhataParty, id: string) {
         if (existing.orderId) throw new AppError('Only standalone Khata entries can be deleted here', 400)
 
         await db.transaction(async (tx) => {
-            const reverseDelta = existing.type === 'udhar_payment' ? existing.amount : -existing.amount
-            await adjustCustomerUdhar(tx, existing.customerId, reverseDelta)
             await tx.delete(customerTransactions).where(eq(customerTransactions.id, id))
         })
 
@@ -306,8 +304,6 @@ export async function deleteKhataEntry(party: KhataParty, id: string) {
     if (existing.restockOrderId) throw new AppError('Only standalone Khata entries can be deleted here', 400)
 
     await db.transaction(async (tx) => {
-        const reverseDelta = existing.type === 'payment' ? existing.amount : -existing.amount
-        await adjustSupplierPayable(tx, existing.supplierId, reverseDelta)
         await tx.delete(supplierTransactions).where(eq(supplierTransactions.id, id))
     })
 

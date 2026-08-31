@@ -6,9 +6,8 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { DataTable } from '@/components/shared/DataTable'
 import { PageHeader, RowActions } from '@/components/shared/PageHeader'
 import { SearchInput } from '@/components/shared/SearchInput'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { useDeactivateSupplierMutation, useGetSuppliersQuery } from '@/redux/api/suppliersApi'
+import { useDeleteSupplierMutation, useGetSuppliersQuery } from '@/redux/api/suppliersApi'
 import type { Supplier } from '@/types/api'
 import { Package, Plus, ShoppingCart } from 'lucide-react'
 import { toast } from 'sonner'
@@ -17,14 +16,14 @@ import { usePermissions } from '@/hooks/usePermissions'
 
 export default function SuppliersPage() {
     const { canWrite, canDelete } = usePermissions()
-    const { data, isLoading, refetch } = useGetSuppliersQuery(true)
-    const [deactivateSupplier, { isLoading: deactivating }] = useDeactivateSupplierMutation()
+    const { data, isLoading, refetch } = useGetSuppliersQuery()
+    const [deleteSupplier, { isLoading: deleting }] = useDeleteSupplierMutation()
     const [search, setSearch] = useState('')
     const [formOpen, setFormOpen] = useState(false)
     const [editSupplier, setEditSupplier] = useState<Supplier | null>(null)
     const [productsSupplier, setProductsSupplier] = useState<Supplier | null>(null)
     const [restockSupplier, setRestockSupplier] = useState<Supplier | null>(null)
-    const [deactivateId, setDeactivateId] = useState<string | null>(null)
+    const [deleteId, setDeleteId] = useState<string | null>(null)
 
     const filtered = useMemo(() => {
         const list = data?.suppliers ?? []
@@ -68,11 +67,6 @@ export default function SuppliersPage() {
                         key: 'products',
                         label: 'Products',
                         render: (row) => String((row.products as unknown[])?.length ?? 0)
-                    },
-                    {
-                        key: 'isActive',
-                        label: 'Status',
-                        render: (row) => <Badge variant={row.isActive ? 'default' : 'secondary'}>{row.isActive ? 'Active' : 'Inactive'}</Badge>
                     }
                 ]}
                 rows={filtered as unknown as Record<string, unknown>[]}
@@ -90,24 +84,20 @@ export default function SuppliersPage() {
                                                   onClick={() => setProductsSupplier(supplier)}>
                                                   <Package className="size-3.5" /> Products
                                               </Button>
-                                              {supplier.isActive ? (
-                                                  <Button
-                                                      variant="ghost"
-                                                      size="sm"
-                                                      onClick={() => setRestockSupplier(supplier)}>
-                                                      <ShoppingCart className="size-3.5" /> Restock
-                                                  </Button>
-                                              ) : null}
+                                              <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={() => setRestockSupplier(supplier)}>
+                                                  <ShoppingCart className="size-3.5" /> Restock
+                                              </Button>
                                           </>
                                       }
                                       onEdit={() => {
                                           setEditSupplier(supplier)
                                           setFormOpen(true)
                                       }}
-                                      deleteLabel="Deactivate"
-                                      onDelete={
-                                          canDelete && supplier.isActive ? () => setDeactivateId(String(supplier.id ?? supplier._id)) : undefined
-                                      }
+                                      deleteLabel="Delete"
+                                      onDelete={canDelete ? () => setDeleteId(String(supplier.id ?? supplier._id)) : undefined}
                                   />
                               )
                           }
@@ -151,22 +141,22 @@ export default function SuppliersPage() {
             />
 
             <ConfirmDialog
-                open={!!deactivateId}
-                onOpenChange={() => setDeactivateId(null)}
-                title="Deactivate supplier?"
-                description="The supplier will be marked inactive but records are kept."
+                open={!!deleteId}
+                onOpenChange={() => setDeleteId(null)}
+                title="Delete supplier permanently?"
+                description="This permanently deletes the supplier, their restock orders, transactions, and related purchasing history."
                 onConfirm={async () => {
-                    if (!deactivateId) return
+                    if (!deleteId) return
                     try {
-                        await deactivateSupplier(deactivateId).unwrap()
-                        toast.success('Supplier deactivated')
-                        setDeactivateId(null)
+                        await deleteSupplier(deleteId).unwrap()
+                        toast.success('Supplier deleted permanently')
+                        setDeleteId(null)
                         refetch()
                     } catch (err) {
-                        toast.error(getApiErrorMessage(err, 'Deactivate failed'))
+                        toast.error(getApiErrorMessage(err, 'Delete failed'))
                     }
                 }}
-                loading={deactivating}
+                loading={deleting}
             />
         </div>
     )

@@ -1,7 +1,8 @@
 // @ts-nocheck
-import { asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from './db.js'
 import { whatsappQueue } from '../models/tables.js'
+import { AppError } from './errors.js'
 import { logger } from '../config/logger.js'
 import { createId } from './mappers.js'
 import { formatWhatsAppContact, isWhatsappConnected, sendDocument, sendMessage } from './whatsapp.js'
@@ -40,7 +41,10 @@ function isFileRef(payload: QueueFileRef | QueueTextPayload | QueueDocumentPaylo
     return typeof (payload as QueueFileRef).remotePath === 'string'
 }
 
-export async function getWhatsAppQueueStats() {
+const QUEUE_STATUSES = ['pending', 'processing', 'sent', 'failed'] as const
+export type WhatsAppQueueStatus = (typeof QUEUE_STATUSES)[number]
+
+async function getWhatsAppQueueCounts() {
     const countsRows = await db
         .select({
             status: whatsappQueue.status,
@@ -55,23 +59,92 @@ export async function getWhatsAppQueueStats() {
         if (key in counts && key !== 'total') counts[key] = row.count
         counts.total += row.count
     }
+    return counts
+}
 
-    const recent = await db
-        .select({
-            id: whatsappQueue.id,
-            contact: whatsappQueue.contact,
-            kind: whatsappQueue.kind,
-            status: whatsappQueue.status,
-            attempts: whatsappQueue.attempts,
-            lastError: whatsappQueue.lastError,
-            createdAt: whatsappQueue.createdAt,
-            updatedAt: whatsappQueue.updatedAt
-        })
-        .from(whatsappQueue)
-        .orderBy(desc(whatsappQueue.updatedAt))
-        .limit(25)
+const queueListColumns = {
+    id: whatsappQueue.id,
+    contact: whatsappQueue.contact,
+    kind: whatsappQueue.kind,
+    status: whatsappQueue.status,
+    attempts: whatsappQueue.attempts,
+    lastError: whatsappQueue.lastError,
+    createdAt: whatsappQueue.createdAt,
+    updatedAt: whatsappQueue.updatedAt
+}
 
+export async function getWhatsAppQueueStats() {
+    const counts = await getWhatsAppQueueCounts()
+    const recent = await db.select(queueListColumns).from(whatsappQueue).orderBy(desc(whatsappQueue.updatedAt)).limit(25)
     return { counts, recent }
+}
+
+export async function listWhatsAppQueue(options?: { status?: string; page?: number; limit?: number }) {
+    const page = Math.max(1, Number(options?.page) || 1)
+    const limit = Math.min(100, Math.max(1, Number(options?.limit) || 20))
+    const offset = (page - 1) * limit
+    const status = options?.status?.trim()
+    const statusFilter =
+        status && status !== 'all' && QUEUE_STATUSES.includes(status as WhatsAppQueueStatus)
+            ? eq(whatsappQueue.status, status)
+            : undefined
+
+    const where = statusFilter ? and(statusFilter) : undefined
+
+    const [items, totalRow, counts] = await Promise.all([
+        db
+            .select(queueListColumns)
+            .from(whatsappQueue)
+            .where(where)
+            .orderBy(desc(whatsappQueue.updatedAt))
+            .limit(limit)
+            .offset(offset),
+        db.select({ total: count() }).from(whatsappQueue).where(where),
+        getWhatsAppQueueCounts()
+    ])
+
+    return {
+        items,
+        total: totalRow[0]?.total ?? 0,
+        page,
+        limit,
+        counts
+    }
+}
+
+async function resetQueueItemToPending(id: string) {
+    await db
+        .update(whatsappQueue)
+        .set({
+            status: 'pending',
+            attempts: 0,
+            lastError: null,
+            updatedAt: new Date()
+        })
+        .where(eq(whatsappQueue.id, id))
+}
+
+export async function retryWhatsAppQueueItem(id: string) {
+    const [row] = await db.select().from(whatsappQueue).where(eq(whatsappQueue.id, id)).limit(1)
+    if (!row) throw new AppError('Queue item not found', 404)
+    if (row.status !== 'failed' && row.status !== 'processing') {
+        throw new AppError('Only failed or stuck processing items can be retried', 400)
+    }
+
+    await resetQueueItemToPending(id)
+    await broadcastWhatsAppQueueStats()
+    kickQueueProcessing()
+    return { id, status: 'pending' as const }
+}
+
+export async function retryFailedWhatsAppQueueItems() {
+    const failed = await db.select({ id: whatsappQueue.id }).from(whatsappQueue).where(eq(whatsappQueue.status, 'failed'))
+    for (const row of failed) {
+        await resetQueueItemToPending(row.id)
+    }
+    await broadcastWhatsAppQueueStats()
+    if (failed.length > 0) kickQueueProcessing()
+    return { retried: failed.length }
 }
 
 export async function broadcastWhatsAppQueueStats() {
@@ -83,7 +156,16 @@ export async function broadcastWhatsAppQueueStats() {
     }
 }
 
-export async function enqueueWhatsAppText(contact: string, message: string) {
+export type WhatsAppEnqueueMeta = {
+    customerId?: string | null
+    orderId?: string | null
+    transactionId?: string | null
+    docType?: 'invoice' | 'receipt' | 'text' | 'other' | null
+    orderNumber?: number | null
+    displayName?: string | null
+}
+
+export async function enqueueWhatsAppText(contact: string, message: string, meta?: WhatsAppEnqueueMeta) {
     const normalized = formatWhatsAppContact(contact)
     if (!normalized) {
         logger.info('Invalid WhatsApp contact; message not queued', { meta: { contact } })
@@ -101,7 +183,13 @@ export async function enqueueWhatsAppText(contact: string, message: string) {
             contact: normalized,
             kind: 'text',
             payload: JSON.stringify(payload),
-            status: 'pending'
+            status: 'pending',
+            customerId: meta?.customerId ?? null,
+            orderId: meta?.orderId ?? null,
+            transactionId: meta?.transactionId ?? null,
+            docType: meta?.docType ?? 'text',
+            orderNumber: meta?.orderNumber ?? null,
+            displayName: meta?.displayName ?? 'WhatsApp message'
         })
         .returning()
 
@@ -110,7 +198,13 @@ export async function enqueueWhatsAppText(contact: string, message: string) {
     return row.id
 }
 
-export async function enqueueWhatsAppDocument(contact: string, fileName: string, pdfBuffer: Buffer, caption?: string) {
+export async function enqueueWhatsAppDocument(
+    contact: string,
+    fileName: string,
+    pdfBuffer: Buffer,
+    caption?: string,
+    meta?: WhatsAppEnqueueMeta
+) {
     const normalized = formatWhatsAppContact(contact)
     if (!normalized) {
         logger.info('Invalid WhatsApp contact; document not queued', { meta: { contact } })
@@ -134,7 +228,13 @@ export async function enqueueWhatsAppDocument(contact: string, fileName: string,
             contact: normalized,
             kind: 'document',
             payload: JSON.stringify(payload),
-            status: 'pending'
+            status: 'pending',
+            customerId: meta?.customerId ?? null,
+            orderId: meta?.orderId ?? null,
+            transactionId: meta?.transactionId ?? null,
+            docType: meta?.docType ?? 'other',
+            orderNumber: meta?.orderNumber ?? null,
+            displayName: meta?.displayName ?? safeName
         })
         .returning()
 

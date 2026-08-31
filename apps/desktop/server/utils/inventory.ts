@@ -3,38 +3,72 @@ import { and, eq } from 'drizzle-orm'
 import { orders, products, productSales } from '../models/tables.js'
 import { AppError } from './errors.js'
 import { createId } from './mappers.js'
+import {
+    consumeInventoryFifo,
+    createInventoryBatch,
+    restoreOrderBatchAllocations,
+    type BatchDb
+} from '../services/inventoryBatch.service.js'
 
-type DbConn = {
-    select: (...args: unknown[]) => unknown
-    insert: (...args: unknown[]) => unknown
-    update: (...args: unknown[]) => unknown
-}
+type DbConn = BatchDb
 
-export async function adjustProductStockTx(dbConn: DbConn, customerId: string, productId: string, qty: number, action: 'add' | 'minus') {
+export async function adjustProductStockTx(dbConn: DbConn, customerId: string, productId: string, qty: number, action: 'add' | 'minus', orderId?: string) {
     const [product] = await dbConn.select().from(products).where(eq(products.id, productId)).limit(1)
     if (!product) throw new AppError('Product not found', 400)
 
-    const newStockState = action === 'add' ? product.stockQty + qty : product.stockQty - qty
-    if (newStockState < 0) {
-        throw new AppError(`Insufficient stock for ${product.name}. Available: ${product.stockQty}, required: ${qty}`, 400)
+    if (action === 'minus') {
+        const saleId = createId()
+        const newStockState = product.stockQty - qty
+        if (newStockState < 0) {
+            throw new AppError(`Insufficient stock for ${product.name}. Available: ${product.stockQty}, required: ${qty}`, 400)
+        }
+
+        await dbConn.insert(productSales).values({
+            id: saleId,
+            customerId,
+            productId,
+            stockQtyLeft: newStockState,
+            sold: qty
+        })
+
+        await consumeInventoryFifo(
+            productId,
+            qty,
+            {
+                reason: 'sale',
+                orderId: orderId ?? null,
+                productSaleId: saleId,
+                updateProductStock: true,
+                writeHistory: false
+            },
+            dbConn
+        )
+
+        return newStockState
     }
 
+    // Restores without an order allocation trail fall back to a manual replenishment batch.
+    const newStockState = product.stockQty + qty
+    const saleId = createId()
     await dbConn.insert(productSales).values({
-        id: createId(),
+        id: saleId,
         customerId,
         productId,
         stockQtyLeft: newStockState,
-        sold: action === 'add' ? -qty : qty
+        sold: -qty
     })
 
-    await dbConn
-        .update(products)
-        .set({
-            stockQty: newStockState,
-            inStock: newStockState > 0,
-            updatedAt: new Date()
-        })
-        .where(eq(products.id, productId))
+    await createInventoryBatch(
+        {
+            productId,
+            sourceType: 'manual',
+            originalQty: qty,
+            unitCost: product.purchasePrice ?? 0,
+            notes: 'Stock restore without prior batch allocation',
+            writeHistory: false
+        },
+        dbConn
+    )
 
     return newStockState
 }
@@ -72,7 +106,7 @@ export async function deductOrderStockTx(dbConn: DbConn, orderId: string, custom
     if (order.stockDeducted) return false
 
     for (const item of items) {
-        await adjustProductStockTx(dbConn, customerId, item.productId, item.qty, 'minus')
+        await adjustProductStockTx(dbConn, customerId, item.productId, item.qty, 'minus', orderId)
     }
 
     await dbConn
@@ -88,8 +122,24 @@ export async function restoreOrderStockTx(dbConn: DbConn, orderId: string, custo
     if (!order) throw new AppError('Order not found', 404)
     if (!order.stockDeducted) return false
 
-    for (const item of items) {
-        await adjustProductStockTx(dbConn, customerId, item.productId, item.qty, 'add')
+    const restored = await restoreOrderBatchAllocations(orderId, dbConn)
+    if (!restored.productIds.length) {
+        // Legacy orders deducted before batch tracking — restore scalar stock via manual batches.
+        for (const item of items) {
+            await adjustProductStockTx(dbConn, customerId, item.productId, item.qty, 'add', orderId)
+        }
+    } else {
+        for (const item of items) {
+            const [product] = await dbConn.select().from(products).where(eq(products.id, item.productId)).limit(1)
+            if (!product) continue
+            await dbConn.insert(productSales).values({
+                id: createId(),
+                customerId,
+                productId: item.productId,
+                stockQtyLeft: product.stockQty,
+                sold: -item.qty
+            })
+        }
     }
 
     await dbConn.update(orders).set({ stockDeducted: false, updatedAt: new Date() }).where(eq(orders.id, orderId))

@@ -29,11 +29,19 @@ function CategoryLabel({ name, productCount, stockByUnit }: { name: string; prod
     )
 }
 
-export function flattenCategories(nodes: Category[], depth = 0): Array<Category & { depth: number }> {
-    const result: Array<Category & { depth: number }> = []
+export type CategoryTreeNode = {
+    id: string
+    _id: string
+    name: string
+    parentId?: string | null
+    children?: CategoryTreeNode[]
+}
+
+export function flattenCategories<T extends CategoryTreeNode>(nodes: T[], depth = 0): Array<T & { depth: number }> {
+    const result: Array<T & { depth: number }> = []
     for (const node of nodes) {
         result.push({ ...node, depth })
-        if (node.children?.length) result.push(...flattenCategories(node.children, depth + 1))
+        if (node.children?.length) result.push(...flattenCategories(node.children as T[], depth + 1))
     }
     return result
 }
@@ -365,12 +373,12 @@ export function CategorySidebar({
     )
 }
 
-export function collectDescendantIds(nodes: Category[], rootId: string): Set<string> {
-    const byId = new Map<string, Category>()
-    const walk = (list: Category[]) => {
+export function collectDescendantIds<T extends CategoryTreeNode>(nodes: T[], rootId: string): Set<string> {
+    const byId = new Map<string, T>()
+    const walk = (list: T[]) => {
         for (const node of list) {
             byId.set(node.id ?? node._id, node)
-            if (node.children?.length) walk(node.children)
+            if (node.children?.length) walk(node.children as T[])
         }
     }
     walk(nodes)

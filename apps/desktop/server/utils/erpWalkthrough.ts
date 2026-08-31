@@ -27,14 +27,16 @@ Currency is always PKR. Prefer clear business language in explanations.
 - product_stock_history audits inbound stock events (qty + purchase_price). Prefer products.stock_qty for current inventory.
 - product_sales logs stock movement tied to customers when order stock is adjusted (sold can be negative on restores).
 
-### 3) Customers & udhar (credit)
-- customers.udhar = outstanding credit the customer still owes the factory.
-- When a customer pays for an order, udhar decreases; when money is refunded, udhar increases.
-- Outstanding on an order ≈ max(0, (orders.price + orders.charges - orders.discount) - orders.payment).
+### 3) Customers & receivables
+- Customer balances are derived from customer_transactions. There is no stored udhar column.
+- Net = total In − total Out. Amount owed ≈ max(0, −net).
+- When a customer order is finalized, type 'order' (Out) is inserted for the invoice charge.
+- Payments use type 'sale' (In); refunds use type 'refund' (Out); cancel/return inserts type 'order_credit' (In) for the full invoice amount.
+- Outstanding on an open order ≈ max(0, (orders.price + orders.charges - orders.discount) - orders.payment + orders.refunded).
   For new orders, price already includes charges/discounts and charges/discount columns are 0.
 - Refundable on an order ≈ max(0, orders.payment - orders.refunded).
-- Standalone Khata customer entries (customer_transactions with order_id IS NULL) also adjust udhar:
-  In (udhar_payment) decreases udhar; Out (refund) increases udhar.
+- Standalone Khata customer entries (customer_transactions with order_id IS NULL):
+  In (udhar_payment) is In; Out (refund) is Out. Caps use the derived outstanding, not a stored column.
 - additional_charges_json / additional_discounts_json store labelled rows for invoice display; amounts are baked into orders.price.
 - invoice_breakdown=0 hides item prices and charge lines on the PDF; grand total remains the net order price.
 
@@ -63,7 +65,7 @@ order_items:
 - Join products for names/categories/units
 
 customer_transactions (money ledger for customers):
-- type: 'sale' (money received / payment against sale), 'refund', 'udhar_payment'
+- type: 'order' (invoice charge / Out), 'sale' (payment / In), 'refund' (Out), 'udhar_payment' (standalone In), 'order_credit' (cancel/return credit / In)
 - amount always positive; meaning depends on type
 - payment_mode: 'cash' | 'online'
 - proof_image optional receipt URL/path
@@ -71,26 +73,29 @@ customer_transactions (money ledger for customers):
 - For revenue from completed sales, filter type='sale' and optionally join orders (exclude cancelled/returned if asking for "valid sales")
 
 ### 5) Suppliers & restock (purchase side)
-- suppliers.payable = standalone Khata balance the factory still owes the supplier (not restock-order outstanding).
+- There is no stored suppliers.payable column. Analytics payable = unpaid received restocks (total_amount − amount_paid) + standalone In − standalone Out.
+- Supplier analytics In/Out is the payable book (not factory cash):
+  - In = purchase (goods received) or standalone refund (payable +)
+  - Out = payment (cash paid) or return (goods returned)
 Flow:
 1. Link suppliers to products via supplier_products (optional sku/unit_cost).
 2. Create restock_orders (status draft → ordered → received, or cancelled).
 3. restock_order_items track qty_ordered, qty_received, qty_returned, unit_cost, line_total.
-4. Receiving stock increases product inventory.
-5. Pay supplier: supplier_transactions type 'payment' increases restock_orders.amount_paid.
-6. Return stock to supplier may reduce order total; cash back from supplier uses type 'refund' and increases amount_refunded.
-7. Standalone Khata supplier entries (supplier_transactions with restock_order_id IS NULL) adjust suppliers.payable:
+4. Receiving stock increases product inventory and creates supplier_transactions type 'purchase' (In) for the received value.
+5. Pay supplier: supplier_transactions type 'payment' (Out) increases restock_orders.amount_paid.
+6. Return stock to supplier creates type 'return' (Out) for the returned value, reduces order total, and may increase amount_refunded when cash comes back.
+7. Standalone Khata supplier entries (supplier_transactions with restock_order_id IS NULL) change the derived payable:
    Out (payment) decreases payable; In (refund) increases payable.
 
 Outstanding to supplier on a restock order ≈
   max(0, total_amount - amount_paid) after accounting for refunds/returns as stored on the order.
-Restock outstanding stays separate from suppliers.payable.
+Restock outstanding is included in analytics payable together with standalone In/Out.
 
 ### 6) Labour & production
 - labourers are workers; labour_rates set rate_per_unit per product.
 - Recording production creates labour_production_entries (qty_produced, rate_per_unit, total_pay).
 - If a recipe exists for the output product, ingredients are consumed into labour_production_consumption and stock decreases.
-- labourer_transactions: category in ('production','advance','bonus','expense','other') — money paid to workers / labour expenses.
+- labourer_transactions: category in ('production','income','advance','bonus','expense','other') — production/income are labourer In; advance/bonus/expense/other are Out.
 - Production pay may also create a labourer_transaction linked via labourer_transaction_id.
 
 ### 7) Recipes (BOM)
@@ -109,13 +114,15 @@ Restock outstanding stays separate from suppliers.payable.
 ### 8) Miscellaneous factory expenditure
 - miscellaneous_expenditures: overheads not tied to a customer/supplier order.
 - amount, payment_mode cash|online, note (required), optional proof_image.
-- category_id → misc_expenditure_categories.id (user-defined expense categories).
-- Include these in "total expenses" / overhead analytics. Filter by category + date range in the UI.
+- category_id → misc_expenditure_categories.id (user-defined nested expense categories; parent_id self-FK like inventory categories).
+- Filtering a parent category includes its subcategories. Each category reports the summed amount of its own expenses plus all nested subcategories.
+- Include these in "total expenses" / overhead analytics.
 
-### 8b) Khata (standalone party ledger)
+### 8b) Standalone party ledger (In/Out from analytics pages)
+- There is no dedicated Khata page. Record standalone customer/supplier In/Out from Customers analytics and Suppliers analytics.
 - Factory cashflow In = money received into the factory; Out = money paid from the factory.
-- Customer/supplier Khata rows keep order_id / restock_order_id null.
-- Customer WhatsApp text slip may be queued after customer Khata create (no PDF).
+- Customer/supplier standalone rows keep order_id / restock_order_id null.
+- Customer WhatsApp text slip may be queued after customer standalone create (no PDF).
 
 ### 9) WhatsApp & AI meta tables (usually ignore for business KPIs)
 - whatsapp_queue: outbound message jobs — not financial.
@@ -132,11 +139,12 @@ Revenue / sales inflow:
 Customer refunds outflow:
 - SUM(customer_transactions.amount) WHERE type = 'refund'
 
-Supplier payments outflow:
+Supplier payments outflow (cash):
 - SUM(supplier_transactions.amount) WHERE type = 'payment'
 
-Supplier refunds inflow:
-- SUM(supplier_transactions.amount) WHERE type = 'refund'
+Supplier payable book (analytics In/Out):
+- In: type IN ('purchase','refund')
+- Out: type IN ('payment','return')
 
 Labour cost:
 - SUM(labourer_transactions.amount) and/or SUM(labour_production_entries.total_pay)
@@ -148,8 +156,8 @@ Inventory value (approx):
 - SUM(products.stock_qty * COALESCE(products.purchase_price, 0))
 - Selling value on hand: SUM(products.stock_qty * products.price)
 
-Udhar / receivables:
-- SUM(customers.udhar)
+Receivables:
+- Derive from customer_transactions: Out types order/refund minus In types sale/udhar_payment/order_credit, floored at 0 per customer.
 
 ## Table relationship map (join keys)
 
@@ -168,16 +176,16 @@ restock_orders.id ← restock_order_items.restock_order_id, supplier_transaction
 labourers.id ← labour_rates.labourer_id, labourer_transactions.labourer_id, labour_production_entries.labourer_id
 labour_production_entries.id ← labour_production_consumption.entry_id
 recipes.id ← recipe_items.recipe_id
-misc_expenditure_categories.id ← miscellaneous_expenditures.category_id
+misc_expenditure_categories.id ← miscellaneous_expenditures.category_id, misc_expenditure_categories.parent_id
 
 ## Important enums / values
 
 orders.order_mode: pos | delayed
 orders.status: saved | cancelled | returned (filter carefully)
-customer_transactions.type: sale | refund | udhar_payment
+customer_transactions.type: order | sale | refund | udhar_payment | order_credit
 customer_transactions.payment_mode / supplier_transactions.payment_mode / miscellaneous_expenditures.payment_mode: cash | online
 restock_orders.status: draft | ordered | received | cancelled
-labourer_transactions.category: production | advance | bonus | expense | other
+labourer_transactions.category: production | income | advance | bonus | expense | other
 SQLite booleans are integers 0/1 (in_stock, delivery_status, stock_deducted, is_active, recipe_applied)
 
 ## Timestamp rules (critical)
@@ -203,10 +211,10 @@ Group by month example:
 
 - Monthly sales revenue → customer_transactions (type='sale') by month
 - Top selling products → order_items JOIN products JOIN orders (exclude cancelled)
-- Customer outstanding credit → customers.udhar
+- Customer outstanding credit → derived from customer_transactions (order Out minus payments/credits)
 - Inventory low stock → products WHERE stock_qty low / in_stock=0
 - Supplier restock outstanding → restock_orders outstanding
-- Supplier Khata payable → suppliers.payable (standalone ledger only)
+- Supplier payable → unpaid received restocks + standalone In − standalone Out
 - Labour cost this month → labourer_transactions / labour_production_entries
 - Overhead expenses → miscellaneous_expenditures
 - Cash vs online mix → payment_mode on the relevant ledger table

@@ -1,10 +1,11 @@
 // @ts-nocheck
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '../utils/db.js'
-import { products, supplierProducts, suppliers } from '../models/tables.js'
+import { products, productStockHistory, restockOrderItems, restockOrders, supplierProducts, supplierTransactions, suppliers } from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
 import { createId, withLegacyId } from '../utils/mappers.js'
 import { assertValidWhatsAppContact } from '../utils/phone.js'
+import { computeSupplierPayable, loadSupplierPayable, standaloneSupplierNet } from '../utils/ledger.js'
 import { getProductIdsForCategories } from './category.service.js'
 
 export async function createSupplier(data: { name: string; contact: string; businessName?: string; address?: string; notes?: string }) {
@@ -42,10 +43,39 @@ export async function updateSupplier(id: string, data: Partial<typeof suppliers.
     return withLegacyId(supplier)
 }
 
-export async function listSuppliers(includeInactive = false) {
-    const rows = includeInactive
-        ? await db.select().from(suppliers).orderBy(desc(suppliers.createdAt))
-        : await db.select().from(suppliers).where(eq(suppliers.isActive, true)).orderBy(desc(suppliers.createdAt))
+export async function listSuppliers() {
+    const [rows, orderRows, txnRows] = await Promise.all([
+        db.select().from(suppliers).orderBy(desc(suppliers.createdAt)),
+        db
+            .select({
+                supplierId: restockOrders.supplierId,
+                status: restockOrders.status,
+                totalAmount: restockOrders.totalAmount,
+                amountPaid: restockOrders.amountPaid
+            })
+            .from(restockOrders),
+        db
+            .select({
+                supplierId: supplierTransactions.supplierId,
+                restockOrderId: supplierTransactions.restockOrderId,
+                type: supplierTransactions.type,
+                amount: supplierTransactions.amount
+            })
+            .from(supplierTransactions)
+    ])
+
+    const ordersBySupplier = new Map()
+    for (const order of orderRows) {
+        const list = ordersBySupplier.get(order.supplierId) ?? []
+        list.push(order)
+        ordersBySupplier.set(order.supplierId, list)
+    }
+    const txnsBySupplier = new Map()
+    for (const txn of txnRows) {
+        const list = txnsBySupplier.get(txn.supplierId) ?? []
+        list.push(txn)
+        txnsBySupplier.set(txn.supplierId, list)
+    }
 
     return Promise.all(
         rows.map(async (supplier) => {
@@ -55,8 +85,12 @@ export async function listSuppliers(includeInactive = false) {
                 .innerJoin(products, eq(supplierProducts.productId, products.id))
                 .where(eq(supplierProducts.supplierId, supplier.id))
 
+            const supplierOrders = ordersBySupplier.get(supplier.id) ?? []
+            const supplierTxns = txnsBySupplier.get(supplier.id) ?? []
+
             return {
                 ...withLegacyId(supplier),
+                payable: computeSupplierPayable(supplierOrders, standaloneSupplierNet(supplierTxns)),
                 products: linkedProducts.map(({ product, link }) => ({
                     ...withLegacyId(product),
                     supplierSku: link.supplierSku,
@@ -80,6 +114,7 @@ export async function getSupplierById(id: string) {
 
     return {
         ...withLegacyId(supplier),
+        payable: await loadSupplierPayable(db, id),
         products: linkedProducts.map(({ product, link }) => ({
             ...withLegacyId(product),
             supplierSku: link.supplierSku,
@@ -89,10 +124,32 @@ export async function getSupplierById(id: string) {
     }
 }
 
-export async function deactivateSupplier(id: string) {
-    const [supplier] = await db.update(suppliers).set({ isActive: false, updatedAt: new Date() }).where(eq(suppliers.id, id)).returning()
-    if (!supplier) throw new AppError('Supplier not found', 404)
-    return withLegacyId(supplier)
+/**
+ * Permanently remove a supplier and every supplier-owned purchasing record.
+ * Stock already received remains in inventory; only its audit rows are removed.
+ */
+export async function deleteSupplier(id: string) {
+    await db.transaction(async (tx) => {
+        const [supplier] = await tx.select({ id: suppliers.id }).from(suppliers).where(eq(suppliers.id, id)).limit(1)
+        if (!supplier) throw new AppError('Supplier not found', 404)
+
+        const orders = await tx.select({ id: restockOrders.id }).from(restockOrders).where(eq(restockOrders.supplierId, id))
+        const orderIds = orders.map((order) => order.id)
+        if (orderIds.length) {
+            const items = await tx
+                .select({ id: restockOrderItems.id })
+                .from(restockOrderItems)
+                .where(inArray(restockOrderItems.restockOrderId, orderIds))
+            const itemIds = items.map((item) => item.id)
+            if (itemIds.length) {
+                await tx.delete(productStockHistory).where(inArray(productStockHistory.restockOrderItemId, itemIds))
+            }
+            await tx.delete(restockOrders).where(inArray(restockOrders.id, orderIds))
+        }
+
+        await tx.delete(supplierTransactions).where(eq(supplierTransactions.supplierId, id))
+        await tx.delete(suppliers).where(eq(suppliers.id, id))
+    })
 }
 
 export async function linkSupplierProduct(

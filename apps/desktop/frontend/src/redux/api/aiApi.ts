@@ -5,7 +5,7 @@ import type { ApiEnvelope } from '@/types/api'
 
 export type ChatHistoryTurn = { role: 'user' | 'assistant'; content: string }
 
-export type GeminiKeyStatus = { configured: boolean; model: string }
+export type AiProvider = 'gemini' | 'ollama'
 
 export type GeminiModelOption = {
     id: string
@@ -16,6 +16,29 @@ export type GeminiModelOption = {
 export type GeminiModelsResponse = {
     models: GeminiModelOption[]
     source: 'google' | 'fallback'
+}
+
+export type AiProviderStatus = {
+    provider: AiProvider
+    gemini: { configured: boolean; model: string }
+    ollama: {
+        configured: boolean
+        baseUrl: string
+        displayUrl: string
+        port: number
+        model: string | null
+        reachable?: boolean
+        models?: GeminiModelOption[]
+        error?: string
+    }
+}
+
+export type OllamaModelsResponse = {
+    baseUrl: string
+    displayUrl: string
+    port: number
+    models: GeminiModelOption[]
+    selectedModel: string | null
 }
 
 export type AiChatMessageRecord = {
@@ -53,9 +76,35 @@ export type AiChatSendResult = {
 
 export const aiApi = apiSlice.injectEndpoints({
     endpoints: (builder) => ({
-        getGeminiKeyStatus: builder.query<GeminiKeyStatus, void>({
+        getAiProviderStatus: builder.query<AiProviderStatus, { probeOllama?: boolean } | void>({
+            query: (args) => ({
+                url: '/ai/provider',
+                params: args?.probeOllama ? { probeOllama: 'true' } : undefined
+            }),
+            transformResponse: (response: ApiEnvelope<AiProviderStatus>) => unwrapData(response),
+            providesTags: ['AiChat']
+        }),
+        setAiProvider: builder.mutation<AiProviderStatus, { provider: AiProvider }>({
+            query: (body) => ({ url: '/ai/provider', method: 'PUT', body }),
+            transformResponse: (response: ApiEnvelope<AiProviderStatus>) => unwrapData(response),
+            invalidatesTags: ['AiChat']
+        }),
+        getOllamaModels: builder.query<OllamaModelsResponse, string | void>({
+            query: (baseUrl) => ({
+                url: '/ai/ollama/models',
+                params: baseUrl ? { baseUrl } : undefined
+            }),
+            transformResponse: (response: ApiEnvelope<OllamaModelsResponse>) => unwrapData(response),
+            providesTags: ['AiChat']
+        }),
+        saveOllamaSettings: builder.mutation<AiProviderStatus, { baseUrl?: string; port?: number; model?: string; setActive?: boolean }>({
+            query: (body) => ({ url: '/ai/ollama', method: 'PUT', body }),
+            transformResponse: (response: ApiEnvelope<AiProviderStatus>) => unwrapData(response),
+            invalidatesTags: ['AiChat']
+        }),
+        getGeminiKeyStatus: builder.query<{ configured: boolean; model: string }, void>({
             query: () => '/ai/gemini/status',
-            transformResponse: (response: ApiEnvelope<GeminiKeyStatus>) => unwrapData(response),
+            transformResponse: (response: ApiEnvelope<{ configured: boolean; model: string }>) => unwrapData(response),
             providesTags: ['AiChat']
         }),
         getGeminiModels: builder.query<GeminiModelsResponse, void>({
@@ -67,19 +116,19 @@ export const aiApi = apiSlice.injectEndpoints({
             query: () => '/ai/gemini/models/public',
             transformResponse: (response: ApiEnvelope<GeminiModelsResponse>) => unwrapData(response)
         }),
-        saveGeminiApiKey: builder.mutation<GeminiKeyStatus, { apiKey: string; model?: string }>({
+        saveGeminiApiKey: builder.mutation<AiProviderStatus, { apiKey: string; model?: string }>({
             query: (body) => ({ url: '/ai/gemini/api-key', method: 'PUT', body }),
-            transformResponse: (response: ApiEnvelope<GeminiKeyStatus>) => unwrapData(response),
+            transformResponse: (response: ApiEnvelope<AiProviderStatus>) => unwrapData(response),
             invalidatesTags: ['AiChat']
         }),
-        saveGeminiModel: builder.mutation<GeminiKeyStatus, { model: string }>({
+        saveGeminiModel: builder.mutation<AiProviderStatus, { model: string }>({
             query: (body) => ({ url: '/ai/gemini/model', method: 'PUT', body }),
-            transformResponse: (response: ApiEnvelope<GeminiKeyStatus>) => unwrapData(response),
+            transformResponse: (response: ApiEnvelope<AiProviderStatus>) => unwrapData(response),
             invalidatesTags: ['AiChat']
         }),
-        removeGeminiApiKey: builder.mutation<{ configured: boolean }, void>({
+        removeGeminiApiKey: builder.mutation<AiProviderStatus, void>({
             query: () => ({ url: '/ai/gemini/api-key', method: 'DELETE' }),
-            transformResponse: (response: ApiEnvelope<{ configured: boolean }>) => unwrapData(response),
+            transformResponse: (response: ApiEnvelope<AiProviderStatus>) => unwrapData(response),
             invalidatesTags: ['AiChat']
         }),
         getAiSessions: builder.query<{ sessions: AiChatSessionSummary[] }, void>({
@@ -111,6 +160,10 @@ export const aiApi = apiSlice.injectEndpoints({
 })
 
 export const {
+    useGetAiProviderStatusQuery,
+    useSetAiProviderMutation,
+    useGetOllamaModelsQuery,
+    useSaveOllamaSettingsMutation,
     useGetGeminiKeyStatusQuery,
     useGetGeminiModelsQuery,
     useGetGeminiModelsPublicQuery,

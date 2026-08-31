@@ -1,20 +1,18 @@
 import { useMemo, useState } from 'react'
-import { LabelledAmountList, parseLabelledAmountRows } from '@/components/orders/LabelledAmountList'
+import { parseLabelledAmountRows } from '@/components/orders/LabelledAmountList'
+import { OrderDetailsPanel } from '@/components/orders/OrderDetailsPanel'
+import { OrderEntryHeader } from '@/components/orders/OrderEntryHeader'
+import { OrderEntryShell } from '@/components/orders/OrderEntryShell'
+import { OrderItemsTable } from '@/components/orders/OrderItemsTable'
+import { OrderProductPicker } from '@/components/orders/OrderProductPicker'
 import { CustomerSearchSelect } from '@/components/shared/CustomerSearchSelect'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { SearchInput } from '@/components/shared/SearchInput'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
-import { Textarea } from '@/components/ui/textarea'
 import { useCreateOrderMutation } from '@/redux/api/ordersApi'
 import { useGetProductsQuery } from '@/redux/api/productsApi'
 import type { CartLine, LabelledAmount, Product } from '@/types/api'
 import { getApiErrorMessage } from '@/lib/errors'
-import { CalendarClock, Minus, Plus, ShoppingCart, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function DelayedOrderPage() {
@@ -59,15 +57,14 @@ export default function DelayedOrderPage() {
         })
     }
 
-    const updateQty = (productId: string, delta: number) => {
+    const updateQty = (productId: string, qty: number) => {
         setCart(
             (prev) =>
                 prev
                     .map((line) => {
                         if (line.productId !== productId) return line
-                        const nextQty = line.qty + delta
-                        if (nextQty <= 0) return null
-                        return { ...line, qty: nextQty }
+                        if (qty <= 0) return null
+                        return { ...line, qty }
                     })
                     .filter(Boolean) as CartLine[]
         )
@@ -147,227 +144,74 @@ export default function DelayedOrderPage() {
 
     return (
         <div>
-            <PageHeader
-                title="Delayed orders"
-                description="Book orders for a future delivery date"
-            />
-
-            <div className="grid gap-6 lg:grid-cols-5">
-                <div className="space-y-4 lg:col-span-3">
-                    <Card>
-                        <CardHeader className="pb-3">
-                            <CardTitle className="text-base">Customer</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <CustomerSearchSelect
-                                value={customerId}
-                                onChange={setCustomerId}
-                            />
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader className="pb-3">
-                            <div className="flex items-center justify-between gap-2">
-                                <CardTitle className="text-base">Products</CardTitle>
-                                <SearchInput
-                                    value={productSearch}
-                                    onChange={setProductSearch}
-                                    placeholder="Search..."
-                                    className="max-w-xs"
+            <PageHeader title="Delayed orders" />
+            <OrderEntryShell
+                header={<OrderEntryHeader />}
+                customer={
+                    <CustomerSearchSelect
+                        value={customerId}
+                        onChange={setCustomerId}
+                    />
+                }
+                products={
+                    <OrderProductPicker
+                        products={filteredProducts}
+                        search={productSearch}
+                        onSearch={setProductSearch}
+                        onAdd={addToCart}
+                        emptyMessage="No products found"
+                    />
+                }
+                items={
+                    <OrderItemsTable
+                        cart={cart}
+                        onQtyChange={updateQty}
+                        onRemove={removeLine}
+                        onClear={clearCart}
+                    />
+                }
+                details={
+                    <OrderDetailsPanel
+                        meta={
+                            <div className="max-w-xs space-y-1">
+                                <Label htmlFor="delivery-date">Delivery date</Label>
+                                <Input
+                                    id="delivery-date"
+                                    type="date"
+                                    min={today}
+                                    value={deliveryDate}
+                                    onChange={(e) => setDeliveryDate(e.target.value)}
                                 />
+                                <p className="text-muted-foreground text-xs">
+                                    Stock is deducted on the delivery date when enough stock is available; otherwise delivery moves forward by one
+                                    day.
+                                </p>
                             </div>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                                {filteredProducts.map((product) => (
-                                    <button
-                                        key={product.id ?? product._id}
-                                        type="button"
-                                        onClick={() => addToCart(product)}
-                                        className="flex items-start justify-between rounded-lg border p-3 text-left transition-colors hover:bg-muted/50">
-                                        <div>
-                                            <p className="font-medium">{product.name}</p>
-                                            <p className="text-xs text-muted-foreground">{product.category}</p>
-                                            <p className="mt-1 text-sm">
-                                                Rs {product.price}
-                                                {(product.discount ?? 0) > 0 ? (
-                                                    <span className="text-muted-foreground"> · disc {product.discount}</span>
-                                                ) : null}
-                                            </p>
-                                        </div>
-                                        <Badge variant="outline">{product.stockQty} in stock</Badge>
-                                    </button>
-                                ))}
-                                {filteredProducts.length === 0 ? (
-                                    <p className="col-span-full py-8 text-center text-sm text-muted-foreground">No products found</p>
-                                ) : null}
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                <Card className="lg:col-span-2">
-                    <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="flex items-center gap-2 text-base">
-                                <ShoppingCart className="size-4" /> Cart
-                            </CardTitle>
-                            {cart.length > 0 ? (
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={clearCart}>
-                                    Clear
-                                </Button>
-                            ) : null}
-                        </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        {cart.length === 0 ? (
-                            <p className="py-8 text-center text-sm text-muted-foreground">Cart is empty</p>
-                        ) : (
-                            cart.map((line) => (
-                                <div
-                                    key={line.productId}
-                                    className="flex items-center gap-2 rounded-lg border p-2">
-                                    <div className="min-w-0 flex-1">
-                                        <p className="truncate text-sm font-medium">{line.product.name}</p>
-                                        <p className="text-xs text-muted-foreground">
-                                            Rs {line.product.price} × {line.qty}
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                        <Button
-                                            variant="outline"
-                                            size="icon"
-                                            className="size-7"
-                                            onClick={() => updateQty(line.productId, -1)}>
-                                            <Minus className="size-3" />
-                                        </Button>
-                                        <span className="w-6 text-center text-sm">{line.qty}</span>
-                                        <Button
-                                            variant="outline"
-                                            size="icon"
-                                            className="size-7"
-                                            onClick={() => updateQty(line.productId, 1)}>
-                                            <Plus className="size-3" />
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="size-7 text-destructive"
-                                            onClick={() => removeLine(line.productId)}>
-                                            <Trash2 className="size-3" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            ))
-                        )}
-
-                        <Separator />
-
-                        <div className="space-y-2">
-                            <Label htmlFor="delivery-date">Delivery date</Label>
-                            <Input
-                                id="delivery-date"
-                                type="date"
-                                min={today}
-                                value={deliveryDate}
-                                onChange={(e) => setDeliveryDate(e.target.value)}
-                            />
-                            <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <CalendarClock className="size-3" />
-                                Stock is deducted on the delivery date when enough stock is available; otherwise delivery moves forward by one day.
-                            </p>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="order-message">Message</Label>
-                            <Textarea
-                                id="order-message"
-                                value={message}
-                                onChange={(e) => setMessage(e.target.value)}
-                                rows={2}
-                                placeholder="Optional note"
-                            />
-                        </div>
-
-                        <LabelledAmountList
-                            title="Additional charges"
-                            rows={additionalCharges}
-                            onChange={setAdditionalCharges}
-                            descriptionPlaceholder="e.g. Delivery"
-                        />
-                        <LabelledAmountList
-                            title="Additional discounts"
-                            rows={additionalDiscounts}
-                            onChange={setAdditionalDiscounts}
-                            descriptionPlaceholder="e.g. Loyalty discount"
-                        />
-
-                        <label className="flex items-center gap-2 text-sm">
-                            <input
-                                type="checkbox"
-                                checked={invoiceBreakdown}
-                                onChange={(e) => setInvoiceBreakdown(e.target.checked)}
-                                className="size-4 rounded border"
-                            />
-                            Breakdown invoice details
-                        </label>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="delayed-payment">Advance payment (optional)</Label>
-                            <Input
-                                id="delayed-payment"
-                                type="number"
-                                min={0}
-                                max={total}
-                                value={payment}
-                                onChange={(e) => setPayment(e.target.value)}
-                                placeholder="0"
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                Leave empty for no payment now. Remaining balance can be collected later from Orders.
-                            </p>
-                        </div>
-
-                        <div className="space-y-1 text-sm">
-                            {(lineDiscount + extraDiscount > 0 || chargesTotal > 0) && (
-                                <>
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Items</span>
-                                        <span>Rs {subtotal.toFixed(0)}</span>
-                                    </div>
-                                    {lineDiscount + extraDiscount > 0 ? (
-                                        <div className="flex justify-between">
-                                            <span className="text-muted-foreground">Discounts</span>
-                                            <span>− Rs {(lineDiscount + extraDiscount).toFixed(0)}</span>
-                                        </div>
-                                    ) : null}
-                                    {chargesTotal > 0 ? (
-                                        <div className="flex justify-between">
-                                            <span className="text-muted-foreground">Extra charges</span>
-                                            <span>+ Rs {chargesTotal.toFixed(0)}</span>
-                                        </div>
-                                    ) : null}
-                                </>
-                            )}
-                            <div className="flex justify-between text-base font-semibold">
-                                <span>Order price</span>
-                                <span>Rs {total.toFixed(0)}</span>
-                            </div>
-                        </div>
-                    </CardContent>
-                    <CardFooter>
-                        <Button
-                            className="w-full"
-                            disabled={placing || cart.length === 0}
-                            onClick={handlePlaceOrder}>
-                            {placing ? 'Saving order...' : 'Save delayed order'}
-                        </Button>
-                    </CardFooter>
-                </Card>
-            </div>
+                        }
+                        message={message}
+                        onMessage={setMessage}
+                        additionalCharges={additionalCharges}
+                        onCharges={setAdditionalCharges}
+                        additionalDiscounts={additionalDiscounts}
+                        onDiscounts={setAdditionalDiscounts}
+                        invoiceBreakdown={invoiceBreakdown}
+                        onInvoiceBreakdown={setInvoiceBreakdown}
+                        paymentLabel="Advance payment (optional)"
+                        paymentHint="Leave empty for no payment now. Remaining balance can be collected later from Orders."
+                        payment={payment}
+                        onPayment={setPayment}
+                        paymentMax={total}
+                        subtotal={subtotal}
+                        discountTotal={lineDiscount + extraDiscount}
+                        chargesTotal={chargesTotal}
+                        total={total}
+                        submitLabel={placing ? 'Saving order...' : 'Save delayed order'}
+                        submitting={placing}
+                        canSubmit={cart.length > 0}
+                        onSubmit={handlePlaceOrder}
+                    />
+                }
+            />
         </div>
     )
 }

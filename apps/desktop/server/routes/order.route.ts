@@ -9,6 +9,7 @@ import {
     deleteCart,
     deleteOrder,
     generateInvoices,
+    generateOrderSheet,
     getAllOrders,
     getOrder,
     recordOrderRefund,
@@ -26,6 +27,7 @@ router.post('/add-order-refund/:id', isAuthenticated, authorizeWrite, recordOrde
 router.post('/return-order/:id', isAuthenticated, authorizeWrite, returnOrder)
 router.post('/return-order-udhar/:id', isAuthenticated, authorizeWrite, returnOrderUdhar)
 router.post('/generate-invoices', isAuthenticated, authorizeWrite, generateInvoices)
+router.post('/generate-order-sheet', isAuthenticated, authorizeWrite, generateOrderSheet)
 router.post('/cancel-order/:id', isAuthenticated, authorizeWrite, cancelOrder)
 router.delete('/delete-order/:id', isAuthenticated, authorizeDelete, deleteOrder)
 router.get('/get-order/:id', isAuthenticated, getOrder)

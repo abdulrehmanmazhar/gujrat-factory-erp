@@ -29,7 +29,7 @@ export function RecordProductionDialog({
     const [qtyProduced, setQtyProduced] = useState('')
     const [notes, setNotes] = useState('')
 
-    const labourers = labourersData?.labourers?.filter((l) => l.isActive) ?? []
+    const labourers = labourersData?.labourers ?? []
     const selectedLabourer = labourers.find((l) => (l.id ?? l._id) === labourerId)
     const ratedProducts = selectedLabourer?.rates ?? []
 

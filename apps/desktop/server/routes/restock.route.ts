@@ -5,6 +5,7 @@ import {
     cancelRestockOrder,
     createRestockOrder,
     deleteRestockOrder,
+    deleteSupplierTransaction,
     getRestockOrder,
     getRestockOrders,
     getSupplierTransactions,
@@ -28,5 +29,6 @@ router.post('/restock-orders/:id/cancel', isAuthenticated, authorizeWrite, cance
 router.delete('/restock-orders/:id', isAuthenticated, authorizeDelete, deleteRestockOrder)
 
 router.get('/supplier/transactions', isAuthenticated, getSupplierTransactions)
+router.delete('/supplier/transactions/:id', isAuthenticated, authorizeDelete, deleteSupplierTransaction)
 
 export default router

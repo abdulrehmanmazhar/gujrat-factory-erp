@@ -63,8 +63,16 @@ export async function queueTransactionReceiptWhatsApp(transactionId: string, lan
 
     const message = buildReceiptWhatsAppMessage(documentLanguage, slip, txn.type, txn.amount, formatMoney)
     const title = receiptTitle(documentLanguage, txn.type)
-    const fileName = txn.type === 'refund' ? `${title}-${orderNumber ?? txn.id.slice(0, 8)}.pdf` : `${title}-${orderNumber ?? txn.id.slice(0, 8)}.pdf`
+    const fileName = `${title}-${orderNumber ?? txn.id.slice(0, 8)}.pdf`
+    const meta = {
+        customerId: txn.customerId,
+        orderId: txn.orderId,
+        transactionId: txn.id,
+        docType: 'receipt' as const,
+        orderNumber: typeof orderNumber === 'number' ? orderNumber : null,
+        displayName: fileName
+    }
 
-    await enqueueWhatsAppText(customer.contact, message)
-    await enqueueWhatsAppDocument(customer.contact, fileName, buffer)
+    await enqueueWhatsAppText(customer.contact, message, { ...meta, docType: 'text', displayName: 'Receipt message' })
+    await enqueueWhatsAppDocument(customer.contact, fileName, buffer, undefined, meta)
 }

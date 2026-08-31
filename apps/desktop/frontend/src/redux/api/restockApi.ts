@@ -2,7 +2,7 @@ import { apiSlice } from '@/redux/api/apiSlice'
 import { unwrapData } from '@/lib/api-helpers'
 import type { ApiEnvelope, RestockOrder } from '@/types/api'
 
-export const RESTOCK_MUTATION_TAGS = ['RestockOrders', 'Products', 'Categories', 'Suppliers', 'SupplierTransactions'] as const
+export const RESTOCK_MUTATION_TAGS = ['RestockOrders', 'Products', 'Categories', 'Suppliers', 'SupplierTransactions', 'Analytics'] as const
 
 type RestockItemInput = { productId: string; qtyOrdered: number; unitCost: number }
 
@@ -65,7 +65,7 @@ export const restockApi = apiSlice.injectEndpoints({
         }),
         deleteRestockOrder: builder.mutation<ApiEnvelope<null>, string>({
             query: (id) => ({ url: `/restock-orders/${id}`, method: 'DELETE' }),
-            invalidatesTags: ['RestockOrders']
+            invalidatesTags: ['RestockOrders', 'Analytics']
         }),
         recordRestockPayment: builder.mutation<
             ApiEnvelope<{ order: RestockOrder }>,
@@ -102,6 +102,10 @@ export const restockApi = apiSlice.injectEndpoints({
                 return { url: `/restock-orders/${id}/refunds`, method: 'POST', body }
             },
             invalidatesTags: [...RESTOCK_MUTATION_TAGS]
+        }),
+        deleteSupplierTransaction: builder.mutation<ApiEnvelope<null>, string>({
+            query: (id) => ({ url: `/supplier/transactions/${id}`, method: 'DELETE' }),
+            invalidatesTags: [...RESTOCK_MUTATION_TAGS]
         })
     })
 })
@@ -116,5 +120,6 @@ export const {
     useCancelRestockOrderMutation,
     useDeleteRestockOrderMutation,
     useRecordRestockPaymentMutation,
-    useRecordRestockRefundMutation
+    useRecordRestockRefundMutation,
+    useDeleteSupplierTransactionMutation
 } = restockApi

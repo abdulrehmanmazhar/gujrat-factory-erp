@@ -111,6 +111,5 @@ export async function updateRecipe(id: string, items: RecipeItemInput[], notes?:
 export async function deleteRecipe(id: string) {
     const [recipe] = await db.select().from(recipes).where(eq(recipes.id, id)).limit(1)
     if (!recipe) throw new AppError('Recipe not found', 404)
-    await db.delete(recipeItems).where(eq(recipeItems.recipeId, id))
     await db.delete(recipes).where(eq(recipes.id, id))
 }

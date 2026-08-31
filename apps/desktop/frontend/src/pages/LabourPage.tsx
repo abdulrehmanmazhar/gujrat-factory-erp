@@ -1,11 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { LabourerFormDialog } from '@/components/labour/LabourerFormDialog'
 import { LabourRatesDialog } from '@/components/labour/LabourRatesDialog'
-import { RecordLabourTransactionDialog } from '@/components/labour/RecordLabourTransactionDialog'
 import { RecordProductionDialog } from '@/components/labour/RecordProductionDialog'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { DataTable } from '@/components/shared/DataTable'
-import { DateRangeFilter, isWithinDateRange } from '@/components/shared/DateRangeFilter'
 import { PageHeader, RowActions } from '@/components/shared/PageHeader'
 import { SearchInput } from '@/components/shared/SearchInput'
 import { Badge } from '@/components/ui/badge'
@@ -13,44 +11,25 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getApiErrorMessage } from '@/lib/errors'
 import { usePermissions } from '@/hooks/usePermissions'
-import {
-    useDeleteLabourTransactionMutation,
-    useGetLabourersQuery,
-    useGetLabourTransactionsQuery,
-    useGetProductionEntriesQuery,
-    useUpdateLabourerMutation
-} from '@/redux/api/labourApi'
-import type { Labourer, LabourTransactionCategory, LabourerTransaction } from '@/types/api'
+import { useDeleteLabourerMutation, useGetLabourersQuery, useGetProductionEntriesQuery } from '@/redux/api/labourApi'
+import type { Labourer } from '@/types/api'
 import { DollarSign, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
-const CATEGORY_LABELS: Record<LabourTransactionCategory, string> = {
-    production: 'Production',
-    advance: 'Advance',
-    bonus: 'Bonus',
-    expense: 'Expense',
-    other: 'Other'
-}
-
 export default function LabourPage() {
-    const { canWrite, canDelete: canDeleteRecords } = usePermissions()
-    const { data: labourersData, isLoading: loadingWorkers, refetch: refetchWorkers } = useGetLabourersQuery(true)
+    const { canWrite, canDelete } = usePermissions()
+    const { data: labourersData, isLoading: loadingWorkers, refetch: refetchWorkers } = useGetLabourersQuery()
     const { data: productionData, isLoading: loadingProduction, refetch: refetchProduction } = useGetProductionEntriesQuery()
-    const { data: transactionsData, isLoading: loadingTransactions, refetch: refetchTransactions } = useGetLabourTransactionsQuery()
-    const [deleteTransaction, { isLoading: deletingTxn }] = useDeleteLabourTransactionMutation()
-    const [updateLabourer] = useUpdateLabourerMutation()
+    const [deleteLabourer, { isLoading: deletingWorker }] = useDeleteLabourerMutation()
 
     const [tab, setTab] = useState('workers')
     const [search, setSearch] = useState('')
-    const [txnFrom, setTxnFrom] = useState('')
-    const [txnTo, setTxnTo] = useState('')
     const [workerFormOpen, setWorkerFormOpen] = useState(false)
     const [ratesOpen, setRatesOpen] = useState(false)
     const [recordOpen, setRecordOpen] = useState(false)
-    const [txnOpen, setTxnOpen] = useState(false)
     const [editWorker, setEditWorker] = useState<Labourer | null>(null)
     const [ratesWorker, setRatesWorker] = useState<Labourer | null>(null)
-    const [deleteTxnId, setDeleteTxnId] = useState<string | null>(null)
+    const [deleteWorkerId, setDeleteWorkerId] = useState<string | null>(null)
 
     const workers = labourersData?.labourers ?? []
     const filteredWorkers = workers.filter((l) => {
@@ -70,38 +49,11 @@ export default function LabourPage() {
         return e.labourer?.name?.toLowerCase().includes(q) || e.product?.name?.toLowerCase().includes(q) || (e.notes ?? '').toLowerCase().includes(q)
     })
 
-    const txns = transactionsData?.transactions ?? []
-    const filteredTxns = useMemo(() => {
-        return txns.filter((t) => {
-            if (!isWithinDateRange(t.createdAt, txnFrom, txnTo)) return false
-            if (!search.trim() || tab !== 'transactions') return true
-            const q = search.toLowerCase()
-            return (
-                t.labourer?.name?.toLowerCase().includes(q) ||
-                t.description.toLowerCase().includes(q) ||
-                (t.labourCategory ?? '').toLowerCase().includes(q)
-            )
-        })
-    }, [txns, search, tab, txnFrom, txnTo])
-
-    const handleToggleActive = async (worker: Labourer) => {
-        try {
-            await updateLabourer({
-                id: worker.id ?? worker._id,
-                isActive: !worker.isActive
-            }).unwrap()
-            toast.success(worker.isActive ? 'Worker deactivated' : 'Worker reactivated')
-            refetchWorkers()
-        } catch (err) {
-            toast.error(getApiErrorMessage(err, 'Update failed'))
-        }
-    }
-
     return (
         <div>
             <PageHeader
                 title="Labour"
-                description="Manage workers, pay rates, production, and labour payments or expenses"
+                description="Manage workers, pay rates, and production logs"
                 actions={
                     canWrite ? (
                         <>
@@ -113,13 +65,9 @@ export default function LabourPage() {
                                     }}>
                                     <Plus className="size-4" /> Add worker
                                 </Button>
-                            ) : tab === 'production' ? (
+                            ) : (
                                 <Button onClick={() => setRecordOpen(true)}>
                                     <Plus className="size-4" /> Record production
-                                </Button>
-                            ) : (
-                                <Button onClick={() => setTxnOpen(true)}>
-                                    <Plus className="size-4" /> Record payment
                                 </Button>
                             )}
                         </>
@@ -134,25 +82,14 @@ export default function LabourPage() {
                 <TabsList>
                     <TabsTrigger value="workers">Workers</TabsTrigger>
                     <TabsTrigger value="production">Production history</TabsTrigger>
-                    <TabsTrigger value="transactions">Transactions</TabsTrigger>
                 </TabsList>
 
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
                     <SearchInput
                         value={search}
                         onChange={setSearch}
-                        placeholder={
-                            tab === 'workers' ? 'Search workers...' : tab === 'production' ? 'Search production entries...' : 'Search transactions...'
-                        }
+                        placeholder={tab === 'workers' ? 'Search workers...' : 'Search production entries...'}
                     />
-                    {tab === 'transactions' ? (
-                        <DateRangeFilter
-                            from={txnFrom}
-                            to={txnTo}
-                            onFromChange={setTxnFrom}
-                            onToChange={setTxnTo}
-                        />
-                    ) : null}
                 </div>
 
                 <TabsContent value="workers">
@@ -172,13 +109,6 @@ export default function LabourPage() {
                                     const rates = (row.rates as Labourer['rates']) ?? []
                                     return rates.length ? rates.map((r) => `${r.product?.name ?? '?'}: ${r.ratePerUnit}`).join(', ') : '—'
                                 }
-                            },
-                            {
-                                key: 'isActive',
-                                label: 'Status',
-                                render: (row) => (
-                                    <Badge variant={row.isActive ? 'default' : 'secondary'}>{row.isActive ? 'Active' : 'Inactive'}</Badge>
-                                )
                             }
                         ]}
                         rows={filteredWorkers as unknown as Record<string, unknown>[]}
@@ -192,8 +122,8 @@ export default function LabourPage() {
                                                   setEditWorker(worker)
                                                   setWorkerFormOpen(true)
                                               }}
-                                              deleteLabel={worker.isActive ? 'Deactivate' : 'Activate'}
-                                              onDelete={() => handleToggleActive(worker)}
+                                              deleteLabel="Delete"
+                                              onDelete={canDelete ? () => setDeleteWorkerId(String(worker.id ?? worker._id)) : undefined}
                                               extra={
                                                   <Button
                                                       variant="ghost"
@@ -251,59 +181,6 @@ export default function LabourPage() {
                         rows={filteredEntries as unknown as Record<string, unknown>[]}
                     />
                 </TabsContent>
-
-                <TabsContent value="transactions">
-                    <DataTable
-                        loading={loadingTransactions}
-                        columns={[
-                            {
-                                key: 'createdAt',
-                                label: 'Date',
-                                render: (row) => (row.createdAt ? new Date(String(row.createdAt)).toLocaleString() : '—')
-                            },
-                            {
-                                key: 'labourer',
-                                label: 'Worker',
-                                render: (row) => (row.labourer as { name?: string })?.name ?? '—'
-                            },
-                            {
-                                key: 'labourCategory',
-                                label: 'Category',
-                                render: (row) => {
-                                    const cat = (row.labourCategory ?? row.category) as LabourTransactionCategory | null | undefined
-                                    return (
-                                        <Badge variant={cat === 'production' ? 'default' : 'secondary'}>
-                                            {cat ? CATEGORY_LABELS[cat] : 'Labour'}
-                                        </Badge>
-                                    )
-                                }
-                            },
-                            {
-                                key: 'amount',
-                                label: 'Amount (PKR)',
-                                render: (row) => Number(row.amount ?? 0).toFixed(0)
-                            },
-                            { key: 'description', label: 'Description' }
-                        ]}
-                        rows={filteredTxns as unknown as Record<string, unknown>[]}
-                        renderActions={
-                            canWrite
-                                ? (row) => {
-                                      const txn = row as unknown as LabourerTransaction
-                                      const category = txn.labourCategory ?? txn.category
-                                      const canDeleteTxn = canDeleteRecords && category && category !== 'production'
-                                      if (!canDeleteTxn) return null
-                                      return (
-                                          <RowActions
-                                              onDelete={() => setDeleteTxnId(String(txn.id ?? txn._id))}
-                                              deleteLabel="Delete"
-                                          />
-                                      )
-                                  }
-                                : undefined
-                        }
-                    />
-                </TabsContent>
             </Tabs>
 
             <LabourerFormDialog
@@ -326,33 +203,26 @@ export default function LabourPage() {
                 onSuccess={() => {
                     refetchProduction()
                     refetchWorkers()
-                    refetchTransactions()
                 }}
             />
-
-            <RecordLabourTransactionDialog
-                open={txnOpen}
-                onOpenChange={setTxnOpen}
-                onSuccess={refetchTransactions}
-            />
-
             <ConfirmDialog
-                open={!!deleteTxnId}
-                onOpenChange={() => setDeleteTxnId(null)}
-                title="Delete labour transaction?"
-                description="This only removes the payment record. It does not reverse inventory changes."
+                open={!!deleteWorkerId}
+                onOpenChange={() => setDeleteWorkerId(null)}
+                title="Delete labourer permanently?"
+                description="This permanently removes the labourer, their rates, pay transactions, and production history."
                 onConfirm={async () => {
-                    if (!deleteTxnId) return
+                    if (!deleteWorkerId) return
                     try {
-                        await deleteTransaction(deleteTxnId).unwrap()
-                        toast.success('Transaction deleted')
-                        setDeleteTxnId(null)
-                        refetchTransactions()
+                        await deleteLabourer(deleteWorkerId).unwrap()
+                        toast.success('Labourer deleted permanently')
+                        setDeleteWorkerId(null)
+                        refetchWorkers()
+                        refetchProduction()
                     } catch (err) {
                         toast.error(getApiErrorMessage(err, 'Delete failed'))
                     }
                 }}
-                loading={deletingTxn}
+                loading={deletingWorker}
             />
         </div>
     )

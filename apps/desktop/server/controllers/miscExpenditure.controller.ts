@@ -33,8 +33,27 @@ export const getMiscExpenditureCategories = CatchAsyncError(async (req: Request,
 
 export const createMiscExpenditureCategory = CatchAsyncError(async (req: Request, res: Response) => {
     const name = typeof req.body?.name === 'string' ? req.body.name : ''
-    const category = await miscExpenditureService.createMiscExpenditureCategory(name)
+    const parentId = typeof req.body?.parentId === 'string' ? req.body.parentId : (req.body?.parentId ?? null)
+    const category = await miscExpenditureService.createMiscExpenditureCategory({
+        name,
+        parentId,
+        sortOrder: typeof req.body?.sortOrder === 'number' ? req.body.sortOrder : undefined
+    })
     httpResponse(req, res, 201, 'Expenditure category created', { category })
+})
+
+export const updateMiscExpenditureCategory = CatchAsyncError(async (req: Request, res: Response) => {
+    const category = await miscExpenditureService.updateMiscExpenditureCategory(param(req.params.id), {
+        name: typeof req.body?.name === 'string' ? req.body.name : undefined,
+        parentId: req.body?.parentId === undefined ? undefined : req.body.parentId,
+        sortOrder: typeof req.body?.sortOrder === 'number' ? req.body.sortOrder : undefined
+    })
+    httpResponse(req, res, 200, 'Expenditure category updated', { category })
+})
+
+export const deleteMiscExpenditureCategory = CatchAsyncError(async (req: Request, res: Response) => {
+    await miscExpenditureService.deleteMiscExpenditureCategory(param(req.params.id))
+    httpResponse(req, res, 200, 'Expenditure category deleted', null)
 })
 
 export const getMiscExpenditures = CatchAsyncError(async (req: Request, res: Response) => {

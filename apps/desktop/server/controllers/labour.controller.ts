@@ -6,8 +6,7 @@ import { param } from '../utils/params.js'
 import * as labourService from '../services/labour.service.js'
 
 export const getLabourers = CatchAsyncError(async (req: Request, res: Response) => {
-    const includeInactive = req.query.includeInactive === 'true'
-    const labourers = await labourService.listLabourers(includeInactive)
+    const labourers = await labourService.listLabourers()
     httpResponse(req, res, 200, 'Labourers fetched successfully', { labourers })
 })
 
@@ -24,6 +23,11 @@ export const createLabourer = CatchAsyncError(async (req: Request, res: Response
 export const updateLabourer = CatchAsyncError(async (req: Request, res: Response) => {
     const labourer = await labourService.updateLabourer(param(req.params.id), req.body)
     httpResponse(req, res, 200, 'Labourer updated successfully', { labourer })
+})
+
+export const deleteLabourer = CatchAsyncError(async (req: Request, res: Response) => {
+    await labourService.deleteLabourer(param(req.params.id))
+    httpResponse(req, res, 200, 'Labourer and all linked records deleted successfully', null)
 })
 
 export const setLabourRate = CatchAsyncError(async (req: Request, res: Response) => {

@@ -5,11 +5,11 @@ import { labourProductionConsumption, labourProductionEntries, labourRates, labo
 import { AppError } from '../utils/errors.js'
 import { createId, withLegacyId } from '../utils/mappers.js'
 import { assertValidWhatsAppContact } from '../utils/phone.js'
-import { adjustInventoryQty } from './product.service.js'
+import { createInventoryBatch, consumeInventoryFifo } from './inventoryBatch.service.js'
 import { getRecipeByOutputProduct } from './recipe.service.js'
 import { getProductIdsForCategories } from './category.service.js'
 
-export const MANUAL_LABOUR_CATEGORIES = ['advance', 'bonus', 'expense', 'other'] as const
+export const MANUAL_LABOUR_CATEGORIES = ['income', 'advance', 'bonus', 'expense', 'other'] as const
 export type ManualLabourCategory = (typeof MANUAL_LABOUR_CATEGORIES)[number]
 
 async function getLabourerTransactionWithDetails(transactionId: string) {
@@ -82,7 +82,7 @@ export async function createLabourer(data: { name: string; contact?: string; not
     return withLegacyId(labourer)
 }
 
-export async function updateLabourer(id: string, data: Partial<{ name: string; contact: string; notes: string; isActive: boolean }>) {
+export async function updateLabourer(id: string, data: Partial<{ name: string; contact: string; notes: string }>) {
     const [existing] = await db.select().from(labourers).where(eq(labourers.id, id)).limit(1)
     if (!existing) throw new AppError('Labourer not found', 404)
 
@@ -99,10 +99,21 @@ export async function updateLabourer(id: string, data: Partial<{ name: string; c
     return getLabourerWithRates(id)
 }
 
-export async function listLabourers(includeInactive = false) {
-    const rows = includeInactive
-        ? await db.select().from(labourers).orderBy(desc(labourers.createdAt))
-        : await db.select().from(labourers).where(eq(labourers.isActive, true)).orderBy(desc(labourers.createdAt))
+/** Permanently remove a labourer, their rates, pay ledger, and production history. */
+export async function deleteLabourer(id: string) {
+    await db.transaction(async (tx) => {
+        const [labourer] = await tx.select({ id: labourers.id }).from(labourers).where(eq(labourers.id, id)).limit(1)
+        if (!labourer) throw new AppError('Labourer not found', 404)
+
+        // Production consumption and rates cascade from their parent records.
+        await tx.delete(labourProductionEntries).where(eq(labourProductionEntries.labourerId, id))
+        await tx.delete(labourerTransactions).where(eq(labourerTransactions.labourerId, id))
+        await tx.delete(labourers).where(eq(labourers.id, id))
+    })
+}
+
+export async function listLabourers() {
+    const rows = await db.select().from(labourers).orderBy(desc(labourers.createdAt))
 
     return Promise.all(rows.map((r) => getLabourerWithRates(r.id)))
 }
@@ -175,7 +186,6 @@ export async function recordProduction(labourerId: string, productId: string, qt
 
     const [labourer] = await db.select().from(labourers).where(eq(labourers.id, labourerId)).limit(1)
     if (!labourer) throw new AppError('Labourer not found', 404)
-    if (!labourer.isActive) throw new AppError('Labourer is inactive', 400)
 
     const [product] = await db.select().from(products).where(eq(products.id, productId)).limit(1)
     if (!product) throw new AppError('Product not found', 404)
@@ -207,11 +217,18 @@ export async function recordProduction(labourerId: string, productId: string, qt
     const totalPay = ratePerUnit * qtyProduced
     const labourerTransactionId = totalPay > 0 ? createId() : null
 
+    let materialCost = 0
     for (const { productId: ingId, qty } of consumptionPlan) {
-        await adjustInventoryQty(ingId, -qty)
+        const consumed = await consumeInventoryFifo(ingId, qty, {
+            reason: 'production',
+            labourProductionEntryId: entryId,
+            writeHistory: true,
+            updateProductStock: true
+        })
+        materialCost += consumed.totalCost
     }
 
-    await adjustInventoryQty(productId, qtyProduced)
+    const unitCost = qtyProduced > 0 ? (materialCost + totalPay) / qtyProduced : 0
 
     if (labourerTransactionId) {
         await db.insert(labourerTransactions).values({
@@ -245,6 +262,18 @@ export async function recordProduction(labourerId: string, productId: string, qt
             qtyConsumed: qty
         })
     }
+
+    await createInventoryBatch({
+        productId,
+        sourceType: 'labour',
+        originalQty: qtyProduced,
+        unitCost,
+        sourceRefId: entryId,
+        labourProductionEntryId: entryId,
+        labourerId,
+        notes: `Production by ${labourer.name}`,
+        writeHistory: true
+    })
 
     return getProductionEntryWithDetails(entryId)
 }

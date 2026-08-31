@@ -25,13 +25,21 @@ export async function queueOrderInvoiceWhatsApp(orderId: string, lang?: Document
     const slips = buildSlipsFromOrder(builtOrder, { lang: documentLanguage })
     const payload = slips[0]
     const message = buildOrderConfirmationMessage(documentLanguage, payload, formatMoney)
-    const fileName = `${invoiceTitle(documentLanguage)}-${payload.orderNumber ?? orderId.slice(0, 8)}.pdf`
+    const orderNumber = payload.orderNumber ?? null
+    const fileName = `${invoiceTitle(documentLanguage)}-${orderNumber ?? orderId.slice(0, 8)}.pdf`
+    const meta = {
+        customerId: builtOrder.customerId,
+        orderId,
+        docType: 'invoice' as const,
+        orderNumber: typeof orderNumber === 'number' ? orderNumber : null,
+        displayName: fileName
+    }
 
     try {
         const pdfBuffer = await generateOrderInvoicePdf(orderId, documentLanguage)
         const { enqueueWhatsAppText, enqueueWhatsAppDocument } = await import('../utils/whatsappQueue.js')
-        await enqueueWhatsAppText(contact, message)
-        await enqueueWhatsAppDocument(contact, fileName, pdfBuffer)
+        await enqueueWhatsAppText(contact, message, { ...meta, docType: 'text', displayName: 'Invoice message' })
+        await enqueueWhatsAppDocument(contact, fileName, pdfBuffer, undefined, meta)
     } catch (error) {
         logger.error('Error queueing WhatsApp order invoice', { meta: { error, orderId } })
     }

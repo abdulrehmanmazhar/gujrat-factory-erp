@@ -1,41 +1,36 @@
 // @ts-nocheck
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray, or } from 'drizzle-orm'
 import { db } from '../utils/db.js'
-import { productCategories, products, productSales, productStockHistory, units } from '../models/tables.js'
+import {
+    customerTransactions,
+    labourProductionConsumption,
+    labourProductionEntries,
+    labourerTransactions,
+    orderItems,
+    orders,
+    productCategories,
+    productConversions,
+    products,
+    productSales,
+    productStockHistory,
+    recipeItems,
+    recipes,
+    restockOrderItems,
+    restockOrders,
+    supplierTransactions,
+    units
+} from '../models/tables.js'
 import { AppError } from '../utils/errors.js'
 import { createId, withLegacyId } from '../utils/mappers.js'
+import { adjustProductStockTx } from '../utils/inventory.js'
+import { createInventoryBatch, getProductBatchSummary, consumeInventoryFifo } from './inventoryBatch.service.js'
 import { assertUnitExists } from './unit.service.js'
 import { assertCategoriesExist, buildCategoryPathMap } from './category.service.js'
 
 const DEFAULT_UNIT_ID = 'unit-pcs'
 
-export async function adjustProductStock(customerId: string, productId: string, qty: number, action: 'add' | 'minus') {
-    const [product] = await db.select().from(products).where(eq(products.id, productId)).limit(1)
-    if (!product) throw new AppError('Product not found', 400)
-
-    const newStockState = action === 'add' ? product.stockQty + qty : product.stockQty - qty
-    if (newStockState < 0) {
-        throw new AppError(`Insufficient stock for ${product.name}. Available: ${product.stockQty}, required: ${qty}`, 400)
-    }
-
-    await db.insert(productSales).values({
-        id: createId(),
-        customerId,
-        productId,
-        stockQtyLeft: newStockState,
-        sold: action === 'add' ? -qty : qty
-    })
-
-    await db
-        .update(products)
-        .set({
-            stockQty: newStockState,
-            inStock: newStockState > 0,
-            updatedAt: new Date()
-        })
-        .where(eq(products.id, productId))
-
-    return true
+export async function adjustProductStock(customerId: string, productId: string, qty: number, action: 'add' | 'minus', orderId?: string) {
+    return db.transaction(async (tx) => adjustProductStockTx(tx, customerId, productId, qty, action, orderId))
 }
 
 function resolvePurchasePrice(totalBill: number, stockQty: number) {
@@ -90,7 +85,7 @@ async function syncProductCategories(productId: string, categoryIds: string[]) {
         .filter(Boolean)
 }
 
-async function loadCategoriesForProducts(productIds: string[]) {
+export async function loadCategoriesForProducts(productIds: string[]) {
     if (!productIds.length) return new Map()
     const links = await db.select().from(productCategories).where(inArray(productCategories.productId, productIds))
     const { pathById, byId } = await buildCategoryPathMap()
@@ -148,8 +143,8 @@ export async function addProduct(data: {
             name: data.name,
             category: categoryLabel,
             price: data.price,
-            stockQty: data.stockQty,
-            inStock: data.stockQty > 0,
+            stockQty: 0,
+            inStock: false,
             purchasePrice,
             discount: data.discount ?? 0,
             unitId
@@ -159,23 +154,35 @@ export async function addProduct(data: {
     const linkedCategories = await syncProductCategories(productId, categoryIds)
 
     if (data.stockQty > 0) {
-        await db.insert(productStockHistory).values({
-            id: createId(),
+        await createInventoryBatch({
             productId,
-            qty: data.stockQty,
-            purchasePrice,
-            recordedAt: new Date()
+            sourceType: 'manual',
+            originalQty: data.stockQty,
+            unitCost: purchasePrice,
+            notes: 'Initial product stock',
+            writeHistory: true
         })
+    } else {
+        await db
+            .update(products)
+            .set({ purchasePrice, updatedAt: new Date() })
+            .where(eq(products.id, productId))
     }
 
     const history = await getProductHistory(productId)
+    const batchSummary = await getProductBatchSummary(productId)
     const unit = await assertUnitExists(unitId)
+    const [fresh] = await db.select().from(products).where(eq(products.id, productId)).limit(1)
     return {
-        ...withLegacyId(product),
+        ...withLegacyId(fresh ?? product),
         unit,
         history,
         categories: linkedCategories,
-        categoryIds: linkedCategories.map((c) => c.id)
+        categoryIds: linkedCategories.map((c) => c.id),
+        averageCost: batchSummary.averageCost,
+        fifoCost: batchSummary.fifoCost,
+        inventoryValue: batchSummary.inventoryValue,
+        batches: batchSummary.batches
     }
 }
 
@@ -246,24 +253,85 @@ export async function listProducts() {
     const unitById = new Map(allUnits.map((unit) => [unit.id, withLegacyId(unit)]))
     const categoriesByProduct = await loadCategoriesForProducts(allProducts.map((p) => p.id))
 
-    return allProducts.map((product) => {
-        const linkedCategories = categoriesByProduct.get(product.id) ?? []
-        return {
-            ...withLegacyId(product),
-            unit: unitById.get(product.unitId) ?? null,
-            categories: linkedCategories,
-            categoryIds: linkedCategories.map((c) => c.id),
-            productSale: sales.filter((sale) => sale.productId === product.id).map(withLegacyId),
-            history: [] as unknown[]
-        }
-    })
+    return Promise.all(
+        allProducts.map(async (product) => {
+            const linkedCategories = categoriesByProduct.get(product.id) ?? []
+            const batchSummary = await getProductBatchSummary(product.id)
+            return {
+                ...withLegacyId(product),
+                unit: unitById.get(product.unitId) ?? null,
+                categories: linkedCategories,
+                categoryIds: linkedCategories.map((c) => c.id),
+                productSale: sales.filter((sale) => sale.productId === product.id).map(withLegacyId),
+                history: [] as unknown[],
+                averageCost: batchSummary.averageCost,
+                fifoCost: batchSummary.fifoCost,
+                inventoryValue: batchSummary.inventoryValue,
+                batches: batchSummary.batches.filter((batch) => batch.remainingQty > 0)
+            }
+        })
+    )
 }
 
 export async function deleteProduct(id: string) {
-    const [product] = await db.select().from(products).where(eq(products.id, id)).limit(1)
-    if (!product) throw new AppError('Product not found with this id', 400)
-    await db.delete(productCategories).where(eq(productCategories.productId, id))
-    await db.delete(products).where(eq(products.id, id))
+    await db.transaction(async (tx) => {
+        const [product] = await tx.select({ id: products.id }).from(products).where(eq(products.id, id)).limit(1)
+        if (!product) throw new AppError('Product not found with this id', 404)
+
+        // A product is never left attached to a partial order/restock: remove
+        // the complete parent record and all of its ledger rows instead.
+        const orderRows = await tx
+            .select({ orderId: orderItems.orderId })
+            .from(orderItems)
+            .where(eq(orderItems.productId, id))
+        const orderIds = [...new Set(orderRows.map((row) => row.orderId))]
+        if (orderIds.length) {
+            await tx.delete(customerTransactions).where(inArray(customerTransactions.orderId, orderIds))
+            await tx.delete(orders).where(inArray(orders.id, orderIds))
+        }
+
+        const restockRows = await tx
+            .select({ restockOrderId: restockOrderItems.restockOrderId, id: restockOrderItems.id })
+            .from(restockOrderItems)
+            .where(eq(restockOrderItems.productId, id))
+        const restockIds = [...new Set(restockRows.map((row) => row.restockOrderId))]
+        if (restockIds.length) {
+            const restockItems = await tx
+                .select({ id: restockOrderItems.id })
+                .from(restockOrderItems)
+                .where(inArray(restockOrderItems.restockOrderId, restockIds))
+            const restockItemIds = restockItems.map((row) => row.id)
+            if (restockItemIds.length) {
+                await tx.delete(productStockHistory).where(inArray(productStockHistory.restockOrderItemId, restockItemIds))
+            }
+            await tx.delete(supplierTransactions).where(inArray(supplierTransactions.restockOrderId, restockIds))
+            await tx.delete(restockOrders).where(inArray(restockOrders.id, restockIds))
+        }
+
+        const consumingEntries = await tx
+            .select({ entryId: labourProductionConsumption.entryId })
+            .from(labourProductionConsumption)
+            .where(eq(labourProductionConsumption.productId, id))
+        const consumingEntryIds = [...new Set(consumingEntries.map((row) => row.entryId))]
+        const productionFilter = consumingEntryIds.length
+            ? or(eq(labourProductionEntries.productId, id), inArray(labourProductionEntries.id, consumingEntryIds))
+            : eq(labourProductionEntries.productId, id)
+        const productionEntries = await tx
+            .select({ id: labourProductionEntries.id, labourerTransactionId: labourProductionEntries.labourerTransactionId })
+            .from(labourProductionEntries)
+            .where(productionFilter)
+        const productionTransactionIds = productionEntries.flatMap((entry) => (entry.labourerTransactionId ? [entry.labourerTransactionId] : []))
+        if (productionTransactionIds.length) {
+            await tx.delete(labourerTransactions).where(inArray(labourerTransactions.id, productionTransactionIds))
+        }
+        if (productionEntries.length) {
+            await tx.delete(labourProductionEntries).where(inArray(labourProductionEntries.id, productionEntries.map((entry) => entry.id)))
+        }
+        await tx.delete(productConversions).where(or(eq(productConversions.inputProductId, id), eq(productConversions.outputProductId, id)))
+        await tx.delete(recipeItems).where(eq(recipeItems.ingredientProductId, id))
+        await tx.delete(recipes).where(eq(recipes.outputProductId, id))
+        await tx.delete(products).where(eq(products.id, id))
+    })
 }
 
 export async function restockProduct(
@@ -278,30 +346,34 @@ export async function restockProduct(
     }
 
     const purchasePrice = resolvePurchasePrice(Number(data.totalBill) || 0, data.stockQty)
-    const newStockQty = target.stockQty + data.stockQty
 
-    await db.insert(productStockHistory).values({
-        id: createId(),
+    await createInventoryBatch({
         productId: id,
-        qty: data.stockQty,
-        purchasePrice,
-        recordedAt: new Date()
+        sourceType: 'manual',
+        originalQty: data.stockQty,
+        unitCost: purchasePrice,
+        notes: 'Manual restock',
+        writeHistory: true
     })
 
     const [edited] = await db
         .update(products)
         .set({
             price: data.price,
-            stockQty: newStockQty,
             discount: data.discount ?? target.discount ?? 0,
-            purchasePrice,
-            inStock: newStockQty > 0,
             updatedAt: new Date()
         })
         .where(eq(products.id, id))
         .returning()
 
-    return withLegacyId(edited)
+    const batchSummary = await getProductBatchSummary(id)
+    return {
+        ...withLegacyId(edited),
+        averageCost: batchSummary.averageCost,
+        fifoCost: batchSummary.fifoCost,
+        inventoryValue: batchSummary.inventoryValue,
+        batches: batchSummary.batches.filter((batch) => batch.remainingQty > 0)
+    }
 }
 
 export async function findProductsByIds(ids: string[]) {
@@ -315,34 +387,49 @@ export async function getProductById(id: string) {
     return product ?? null
 }
 
-export async function adjustInventoryQty(productId: string, qtyDelta: number, options?: { historyNote?: string; purchasePrice?: number }) {
-    const [product] = await db.select().from(products).where(eq(products.id, productId)).limit(1)
-    if (!product) throw new AppError('Product not found', 404)
-
-    const newStockQty = product.stockQty + qtyDelta
-    if (newStockQty < 0) {
-        throw new AppError(`Insufficient stock for ${product.name}. Available: ${product.stockQty}`, 400)
+export async function adjustInventoryQty(
+    productId: string,
+    qtyDelta: number,
+    options?: {
+        historyNote?: string
+        purchasePrice?: number
+        sourceType?: 'manual' | 'labour' | 'conversion'
+        labourProductionEntryId?: string
+        labourerId?: string
+        conversionId?: string
+        reason?: 'production' | 'conversion' | 'adjustment'
+        writeHistory?: boolean
+    }
+) {
+    if (qtyDelta === 0) {
+        const [product] = await db.select().from(products).where(eq(products.id, productId)).limit(1)
+        if (!product) throw new AppError('Product not found', 404)
+        return withLegacyId(product)
     }
 
-    if (qtyDelta !== 0) {
-        await db.insert(productStockHistory).values({
-            id: createId(),
+    if (qtyDelta > 0) {
+        await createInventoryBatch({
             productId,
-            qty: Math.abs(qtyDelta),
-            purchasePrice: options?.purchasePrice ?? product.purchasePrice ?? 0,
-            recordedAt: new Date()
+            sourceType: options?.sourceType ?? 'manual',
+            originalQty: qtyDelta,
+            unitCost: options?.purchasePrice ?? 0,
+            labourProductionEntryId: options?.labourProductionEntryId,
+            labourerId: options?.labourerId,
+            conversionId: options?.conversionId,
+            notes: options?.historyNote ?? null,
+            writeHistory: options?.writeHistory !== false
+        })
+    } else {
+        await consumeInventoryFifo(productId, Math.abs(qtyDelta), {
+            reason: options?.reason ?? 'adjustment',
+            labourProductionEntryId: options?.labourProductionEntryId,
+            conversionId: options?.conversionId,
+            writeHistory: options?.writeHistory === true,
+            updateProductStock: true
         })
     }
 
-    const [updated] = await db
-        .update(products)
-        .set({
-            stockQty: newStockQty,
-            inStock: newStockQty > 0,
-            updatedAt: new Date()
-        })
-        .where(eq(products.id, productId))
-        .returning()
-
+    const [updated] = await db.select().from(products).where(eq(products.id, productId)).limit(1)
+    if (!updated) throw new AppError('Product not found', 404)
     return withLegacyId(updated)
 }

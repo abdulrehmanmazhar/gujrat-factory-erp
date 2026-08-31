@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { flattenCategories } from '@/components/products/CategorySidebar'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -6,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { getApiErrorMessage } from '@/lib/errors'
+import { useLanguage } from '@/hooks/useLanguage'
 import {
     useCreateMiscExpenditureCategoryMutation,
     useCreateMiscExpenditureMutation,
@@ -24,16 +26,19 @@ export function RecordMiscExpenditureDialog({
     onOpenChange: (open: boolean) => void
     onSuccess: () => void
 }) {
+    const { t } = useLanguage()
     const { data: categoriesData } = useGetMiscExpenditureCategoriesQuery(undefined, { skip: !open })
     const [createCategory, { isLoading: creatingCategory }] = useCreateMiscExpenditureCategoryMutation()
     const [createExpenditure, { isLoading }] = useCreateMiscExpenditureMutation()
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const categories = categoriesData?.categories ?? []
+    const flatCategories = useMemo(() => flattenCategories(categories), [categories])
     const [amount, setAmount] = useState('')
     const [paymentMode, setPaymentMode] = useState<ExpenditurePaymentMode>('cash')
     const [categoryId, setCategoryId] = useState('')
     const [newCategoryName, setNewCategoryName] = useState('')
+    const [newCategoryParentId, setNewCategoryParentId] = useState('none')
     const [addingCategory, setAddingCategory] = useState(false)
     const [note, setNote] = useState('')
     const [proofImage, setProofImage] = useState<File | null>(null)
@@ -45,6 +50,7 @@ export function RecordMiscExpenditureDialog({
         setPaymentMode('cash')
         setCategoryId('')
         setNewCategoryName('')
+        setNewCategoryParentId('none')
         setAddingCategory(false)
         setNote('')
         setProofImage(null)
@@ -68,10 +74,14 @@ export function RecordMiscExpenditureDialog({
             return
         }
         try {
-            const { category } = await createCategory({ name }).unwrap()
+            const { category } = await createCategory({
+                name,
+                parentId: newCategoryParentId === 'none' ? null : newCategoryParentId
+            }).unwrap()
             const id = category.id ?? category._id
             setCategoryId(id)
             setNewCategoryName('')
+            setNewCategoryParentId('none')
             setAddingCategory(false)
             toast.success('Category created')
         } catch (err) {
@@ -142,17 +152,37 @@ export function RecordMiscExpenditureDialog({
                                 className="h-7 px-2"
                                 onClick={() => setAddingCategory((v) => !v)}>
                                 <Plus className="size-3.5" />
-                                {addingCategory ? 'Cancel' : 'New category'}
+                                {addingCategory ? 'Cancel' : t.miscExpenditure.newCategory}
                             </Button>
                         </div>
                         {addingCategory ? (
-                            <div className="flex gap-2">
+                            <div className="space-y-2">
                                 <Input
                                     value={newCategoryName}
                                     onChange={(e) => setNewCategoryName(e.target.value)}
                                     placeholder="e.g. Utilities"
                                     autoFocus
                                 />
+                                <Select
+                                    value={newCategoryParentId}
+                                    onValueChange={setNewCategoryParentId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder={t.miscExpenditure.noParent} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">{t.miscExpenditure.noParent}</SelectItem>
+                                        {flatCategories.map((c) => {
+                                            const id = c.id ?? c._id
+                                            return (
+                                                <SelectItem
+                                                    key={id}
+                                                    value={id}>
+                                                    {c.path ?? `${'—'.repeat(c.depth)} ${c.name}`}
+                                                </SelectItem>
+                                            )
+                                        })}
+                                    </SelectContent>
+                                </Select>
                                 <Button
                                     type="button"
                                     disabled={creatingCategory || !newCategoryName.trim()}
@@ -165,23 +195,23 @@ export function RecordMiscExpenditureDialog({
                                 value={categoryId}
                                 onValueChange={setCategoryId}>
                                 <SelectTrigger>
-                                    <SelectValue placeholder="Select category" />
+                                    <SelectValue placeholder={t.miscExpenditure.selectCategory} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {categories.length === 0 ? (
+                                    {flatCategories.length === 0 ? (
                                         <SelectItem
                                             value="__none"
                                             disabled>
-                                            No categories yet — create one
+                                            {t.miscExpenditure.noCategoriesYet}
                                         </SelectItem>
                                     ) : (
-                                        categories.map((c) => {
+                                        flatCategories.map((c) => {
                                             const id = c.id ?? c._id
                                             return (
                                                 <SelectItem
                                                     key={id}
                                                     value={id}>
-                                                    {c.name}
+                                                    {c.path ?? c.name}
                                                 </SelectItem>
                                             )
                                         })

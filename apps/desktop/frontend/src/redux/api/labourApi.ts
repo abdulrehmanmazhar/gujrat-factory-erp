@@ -2,15 +2,12 @@ import { apiSlice } from '@/redux/api/apiSlice'
 import { unwrapData } from '@/lib/api-helpers'
 import type { ApiEnvelope, Labourer, LabourProductionEntry, LabourTransactionCategory, LabourerTransaction } from '@/types/api'
 
-export const LABOUR_MUTATION_TAGS = ['Labourers', 'LabourProduction', 'LabourerTransactions', 'Products', 'Categories'] as const
+export const LABOUR_MUTATION_TAGS = ['Labourers', 'LabourProduction', 'LabourerTransactions', 'Products', 'Categories', 'Analytics'] as const
 
 export const labourApi = apiSlice.injectEndpoints({
     endpoints: (builder) => ({
-        getLabourers: builder.query<{ labourers: Labourer[] }, boolean | void>({
-            query: (includeInactive) => ({
-                url: '/labourers',
-                params: includeInactive ? { includeInactive: 'true' } : undefined
-            }),
+        getLabourers: builder.query<{ labourers: Labourer[] }, void>({
+            query: () => '/labourers',
             transformResponse: (response: ApiEnvelope<{ labourers: Labourer[] }>) => unwrapData(response),
             providesTags: ['Labourers']
         }),
@@ -21,14 +18,15 @@ export const labourApi = apiSlice.injectEndpoints({
         }),
         createLabourer: builder.mutation<ApiEnvelope<{ labourer: Labourer }>, { name: string; contact?: string; notes?: string }>({
             query: (body) => ({ url: '/labourers', method: 'POST', body }),
-            invalidatesTags: ['Labourers']
+            invalidatesTags: ['Labourers', 'Analytics']
         }),
-        updateLabourer: builder.mutation<
-            ApiEnvelope<{ labourer: Labourer }>,
-            { id: string; name?: string; contact?: string; notes?: string; isActive?: boolean }
-        >({
+        updateLabourer: builder.mutation<ApiEnvelope<{ labourer: Labourer }>, { id: string; name?: string; contact?: string; notes?: string }>({
             query: ({ id, ...body }) => ({ url: `/labourers/${id}`, method: 'PUT', body }),
-            invalidatesTags: ['Labourers']
+            invalidatesTags: ['Labourers', 'Analytics']
+        }),
+        deleteLabourer: builder.mutation<ApiEnvelope<null>, string>({
+            query: (id) => ({ url: `/labourers/${id}`, method: 'DELETE' }),
+            invalidatesTags: [...LABOUR_MUTATION_TAGS]
         }),
         setLabourRate: builder.mutation<ApiEnvelope<{ labourer: Labourer }>, { labourerId: string; productId: string; ratePerUnit: number }>({
             query: ({ labourerId, ...body }) => ({
@@ -81,11 +79,11 @@ export const labourApi = apiSlice.injectEndpoints({
             { labourerId: string; amount: number; category: Exclude<LabourTransactionCategory, 'production'>; description: string }
         >({
             query: (body) => ({ url: '/labour/transactions', method: 'POST', body }),
-            invalidatesTags: ['LabourerTransactions']
+            invalidatesTags: ['LabourerTransactions', 'Analytics']
         }),
         deleteLabourTransaction: builder.mutation<ApiEnvelope<null>, string>({
             query: (id) => ({ url: `/labour/transactions/${id}`, method: 'DELETE' }),
-            invalidatesTags: ['LabourerTransactions']
+            invalidatesTags: ['LabourerTransactions', 'Analytics']
         })
     })
 })
@@ -95,6 +93,7 @@ export const {
     useGetLabourerQuery,
     useCreateLabourerMutation,
     useUpdateLabourerMutation,
+    useDeleteLabourerMutation,
     useSetLabourRateMutation,
     useSetLabourRatesByCategoriesMutation,
     useRemoveLabourRateMutation,

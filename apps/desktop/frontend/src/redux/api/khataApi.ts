@@ -35,7 +35,7 @@ export const khataApi = apiSlice.injectEndpoints({
                 return { url: '/khata/customers', method: 'POST', body }
             },
             transformResponse: (response: ApiEnvelope<{ entry: KhataEntry }>) => unwrapData(response),
-            invalidatesTags: ['Khata', 'Customers', 'CustomerTransactions']
+            invalidatesTags: ['Khata', 'Customers', 'CustomerTransactions', 'Analytics']
         }),
         createSupplierKhata: builder.mutation<{ entry: KhataEntry }, CreateKhataEntryInput>({
             query: ({ partyId, direction, amount, description, paymentMode, proofImage }) => {
@@ -49,12 +49,12 @@ export const khataApi = apiSlice.injectEndpoints({
                 return { url: '/khata/suppliers', method: 'POST', body }
             },
             transformResponse: (response: ApiEnvelope<{ entry: KhataEntry }>) => unwrapData(response),
-            invalidatesTags: ['Khata', 'Suppliers', 'SupplierTransactions']
+            invalidatesTags: ['Khata', 'Suppliers', 'SupplierTransactions', 'Analytics']
         }),
         deleteKhataEntry: builder.mutation<null, { party: KhataParty; id: string }>({
             query: ({ party, id }) => ({ url: `/khata/${party}/${id}`, method: 'DELETE' }),
             transformResponse: (response: ApiEnvelope<null>) => unwrapData(response),
-            invalidatesTags: ['Khata', 'Customers', 'Suppliers', 'CustomerTransactions', 'SupplierTransactions']
+            invalidatesTags: ['Khata', 'Customers', 'Suppliers', 'CustomerTransactions', 'SupplierTransactions', 'Analytics']
         })
     })
 })

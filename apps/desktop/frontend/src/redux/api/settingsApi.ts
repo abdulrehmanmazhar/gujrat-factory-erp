@@ -5,6 +5,9 @@ import type { AppLanguage } from '@/lib/i18n-storage'
 
 export type AppSettings = {
     documentLanguage: AppLanguage
+    posBannerUrl: string | null
+    posBannerPublicId: string | null
+    posBannerHeightPx: number
 }
 
 type SettingsPayload = {
@@ -18,7 +21,7 @@ export const settingsApi = apiSlice.injectEndpoints({
             transformResponse: (response: ApiEnvelope<SettingsPayload>) => unwrapData(response),
             providesTags: ['Settings']
         }),
-        updateSettings: builder.mutation<SettingsPayload, { documentLanguage: AppLanguage }>({
+        updateSettings: builder.mutation<SettingsPayload, { documentLanguage?: AppLanguage; posBannerHeightPx?: number }>({
             query: (body) => ({
                 url: '/settings',
                 method: 'PUT',
@@ -26,8 +29,33 @@ export const settingsApi = apiSlice.injectEndpoints({
             }),
             transformResponse: (response: ApiEnvelope<SettingsPayload>) => unwrapData(response),
             invalidatesTags: ['Settings']
+        }),
+        uploadPosBanner: builder.mutation<SettingsPayload, File>({
+            query: (file) => {
+                const body = new FormData()
+                body.append('banner', file)
+                return {
+                    url: '/settings/pos-banner',
+                    method: 'POST',
+                    body
+                }
+            },
+            transformResponse: (response: ApiEnvelope<SettingsPayload>) => unwrapData(response),
+            invalidatesTags: ['Settings']
+        }),
+        removePosBanner: builder.mutation<SettingsPayload, void>({
+            query: () => ({
+                url: '/settings/pos-banner',
+                method: 'DELETE'
+            }),
+            transformResponse: (response: ApiEnvelope<SettingsPayload>) => unwrapData(response),
+            invalidatesTags: ['Settings']
         })
     })
 })
 
-export const { useGetSettingsQuery, useUpdateSettingsMutation } = settingsApi
+export const { useGetSettingsQuery, useUpdateSettingsMutation, useUploadPosBannerMutation, useRemovePosBannerMutation } = settingsApi
+
+export const DEFAULT_POS_BANNER_HEIGHT = 200
+export const MIN_POS_BANNER_HEIGHT = 60
+export const MAX_POS_BANNER_HEIGHT = 400

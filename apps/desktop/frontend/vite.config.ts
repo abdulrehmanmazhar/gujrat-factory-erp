@@ -54,6 +54,10 @@ export default defineConfig(({ mode }) => {
                 '/test': {
                     target: apiServer,
                     changeOrigin: true
+                },
+                '/logo.png': {
+                    target: apiServer,
+                    changeOrigin: true
                 }
             }
         }

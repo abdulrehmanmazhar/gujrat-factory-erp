@@ -1,15 +1,27 @@
+import { useEffect, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { PaginationControls, totalPages } from '@/components/shared/PaginationControls'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useWhatsAppSocket } from '@/hooks/useWhatsAppSocket'
 import { usePermissions } from '@/hooks/usePermissions'
 import { getApiErrorMessage } from '@/lib/errors'
-import { useGetWhatsAppStatusQuery, useLogoutWhatsAppMutation } from '@/redux/api/whatsappApi'
-import { Loader2, LogOut, MessageCircle, RefreshCw } from 'lucide-react'
+import {
+    useGetWhatsAppQueueQuery,
+    useGetWhatsAppStatusQuery,
+    useLogoutWhatsAppMutation,
+    useRetryFailedWhatsAppQueueMutation,
+    useRetryWhatsAppQueueItemMutation,
+    type WhatsAppQueueStatusFilter
+} from '@/redux/api/whatsappApi'
+import { Loader2, LogOut, MessageCircle, RefreshCw, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
+
+const PAGE_SIZE = 20
 
 function statusLabel(connected: boolean, socketReady: boolean, qrCode: string) {
     if (connected) return 'Connected'
@@ -27,21 +39,71 @@ function queueStatusBadge(status: string) {
 
 export default function WhatsAppPage() {
     const { qrCode, connected, socketReady, socketError, queueStats } = useWhatsAppSocket()
-    const { data: apiStatus, refetch, isFetching } = useGetWhatsAppStatusQuery()
+    const { data: apiStatus, refetch: refetchStatus, isFetching: fetchingStatus } = useGetWhatsAppStatusQuery()
     const [logoutWhatsApp, { isLoading: loggingOut }] = useLogoutWhatsAppMutation()
+    const [retryItem, { isLoading: retryingItem }] = useRetryWhatsAppQueueItemMutation()
+    const [retryFailed, { isLoading: retryingFailed }] = useRetryFailedWhatsAppQueueMutation()
 
-    const stats = queueStats ?? (apiStatus ? { counts: apiStatus.counts, recent: apiStatus.recent } : null)
+    const [statusFilter, setStatusFilter] = useState<WhatsAppQueueStatusFilter>('all')
+    const [page, setPage] = useState(1)
+    const [retryingId, setRetryingId] = useState<string | null>(null)
+
+    const {
+        data: queuePage,
+        refetch: refetchQueue,
+        isFetching: fetchingQueue,
+        isLoading: loadingQueue
+    } = useGetWhatsAppQueueQuery({ status: statusFilter, page, limit: PAGE_SIZE })
+
+    const liveCounts = queueStats?.counts ?? queuePage?.counts ?? apiStatus?.counts
+    const items = queuePage?.items ?? []
+    const total = queuePage?.total ?? 0
+    const pages = totalPages(total, PAGE_SIZE)
     const { canWrite } = usePermissions()
+
+    useEffect(() => {
+        setPage(1)
+    }, [statusFilter])
+
+    useEffect(() => {
+        if (queueStats) void refetchQueue()
+    }, [queueStats, refetchQueue])
 
     const handleLogout = async () => {
         try {
             await logoutWhatsApp().unwrap()
             toast.success('WhatsApp logged out. Scan the new QR code to link again.')
-            refetch()
+            void refetchStatus()
+            void refetchQueue()
         } catch (err) {
             toast.error(getApiErrorMessage(err, 'Logout failed'))
         }
     }
+
+    const handleRetryItem = async (id: string) => {
+        setRetryingId(id)
+        try {
+            await retryItem(id).unwrap()
+            toast.success('Message queued for retry')
+            void refetchQueue()
+        } catch (err) {
+            toast.error(getApiErrorMessage(err, 'Retry failed'))
+        } finally {
+            setRetryingId(null)
+        }
+    }
+
+    const handleRetryFailed = async () => {
+        try {
+            const result = await retryFailed().unwrap()
+            toast.success(result.retried ? `Queued ${result.retried} failed message(s)` : 'No failed messages to retry')
+            void refetchQueue()
+        } catch (err) {
+            toast.error(getApiErrorMessage(err, 'Retry failed'))
+        }
+    }
+
+    const refreshing = fetchingStatus || fetchingQueue
 
     return (
         <div className="space-y-6">
@@ -53,9 +115,12 @@ export default function WhatsAppPage() {
                         <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => refetch()}
-                            disabled={isFetching}>
-                            <RefreshCw className={`size-4 ${isFetching ? 'animate-spin' : ''}`} />
+                            onClick={() => {
+                                void refetchStatus()
+                                void refetchQueue()
+                            }}
+                            disabled={refreshing}>
+                            <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
                             Refresh
                         </Button>
                         {canWrite && connected ? (
@@ -124,28 +189,28 @@ export default function WhatsAppPage() {
                         <CardDescription>Messages persist across restarts and retry automatically</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        {stats ? (
+                        {liveCounts ? (
                             <>
                                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                                     <div className="rounded-lg border p-3 text-center">
-                                        <p className="text-2xl font-semibold">{stats.counts.pending}</p>
+                                        <p className="text-2xl font-semibold">{liveCounts.pending}</p>
                                         <p className="text-xs text-muted-foreground">Pending</p>
                                     </div>
                                     <div className="rounded-lg border p-3 text-center">
-                                        <p className="text-2xl font-semibold">{stats.counts.processing}</p>
+                                        <p className="text-2xl font-semibold">{liveCounts.processing}</p>
                                         <p className="text-xs text-muted-foreground">Processing</p>
                                     </div>
                                     <div className="rounded-lg border p-3 text-center">
-                                        <p className="text-2xl font-semibold">{stats.counts.sent}</p>
+                                        <p className="text-2xl font-semibold">{liveCounts.sent}</p>
                                         <p className="text-xs text-muted-foreground">Sent</p>
                                     </div>
                                     <div className="rounded-lg border p-3 text-center">
-                                        <p className="text-2xl font-semibold">{stats.counts.failed}</p>
+                                        <p className="text-2xl font-semibold">{liveCounts.failed}</p>
                                         <p className="text-xs text-muted-foreground">Failed</p>
                                     </div>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                    Total queued items: {stats.counts.total}. Updates live via WebSocket when messages are enqueued or delivered.
+                                    Total queued items: {liveCounts.total}. Counts update live via WebSocket.
                                 </p>
                             </>
                         ) : (
@@ -156,12 +221,48 @@ export default function WhatsAppPage() {
             </div>
 
             <Card>
-                <CardHeader>
-                    <CardTitle>Recent queue activity</CardTitle>
-                    <CardDescription>Latest messages in the outbound WhatsApp queue</CardDescription>
+                <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <CardTitle>Queue activity</CardTitle>
+                        <CardDescription>Filter by status, paginate, and retry failed sends</CardDescription>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Select
+                            value={statusFilter}
+                            onValueChange={(value) => setStatusFilter(value as WhatsAppQueueStatusFilter)}>
+                            <SelectTrigger className="w-[160px]">
+                                <SelectValue placeholder="Status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All statuses</SelectItem>
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="processing">Processing</SelectItem>
+                                <SelectItem value="sent">Sent</SelectItem>
+                                <SelectItem value="failed">Failed</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        {canWrite && (liveCounts?.failed ?? 0) > 0 ? (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={retryingFailed}
+                                onClick={() => void handleRetryFailed()}>
+                                {retryingFailed ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RotateCcw className="mr-2 size-4" />}
+                                Retry all failed
+                            </Button>
+                        ) : null}
+                        <PaginationControls
+                            page={page}
+                            totalPages={pages}
+                            onPrev={() => setPage((value) => Math.max(1, value - 1))}
+                            onNext={() => setPage((value) => Math.min(pages, value + 1))}
+                        />
+                    </div>
                 </CardHeader>
                 <CardContent>
-                    {stats?.recent?.length ? (
+                    {loadingQueue ? (
+                        <p className="py-8 text-center text-sm text-muted-foreground">Loading queue…</p>
+                    ) : items.length ? (
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -171,10 +272,11 @@ export default function WhatsAppPage() {
                                     <TableHead>Attempts</TableHead>
                                     <TableHead>Updated</TableHead>
                                     <TableHead>Error</TableHead>
+                                    {canWrite ? <TableHead className="w-[100px]">Actions</TableHead> : null}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {stats.recent.map((item) => (
+                                {items.map((item) => (
                                     <TableRow key={item.id}>
                                         <TableCell>{item.contact}</TableCell>
                                         <TableCell className="capitalize">{item.kind}</TableCell>
@@ -186,12 +288,31 @@ export default function WhatsAppPage() {
                                             {item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '—'}
                                         </TableCell>
                                         <TableCell className="max-w-[200px] truncate text-xs text-destructive">{item.lastError ?? '—'}</TableCell>
+                                        {canWrite ? (
+                                            <TableCell>
+                                                {item.status === 'failed' || item.status === 'processing' ? (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        disabled={retryingItem && retryingId === item.id}
+                                                        onClick={() => void handleRetryItem(item.id)}>
+                                                        {retryingItem && retryingId === item.id ? (
+                                                            <Loader2 className="size-4 animate-spin" />
+                                                        ) : (
+                                                            <RotateCcw className="size-4" />
+                                                        )}
+                                                    </Button>
+                                                ) : (
+                                                    '—'
+                                                )}
+                                            </TableCell>
+                                        ) : null}
                                     </TableRow>
                                 ))}
                             </TableBody>
                         </Table>
                     ) : (
-                        <p className="py-8 text-center text-sm text-muted-foreground">No queue items yet.</p>
+                        <p className="py-8 text-center text-sm text-muted-foreground">No queue items for this filter.</p>
                     )}
                 </CardContent>
             </Card>

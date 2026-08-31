@@ -22,7 +22,8 @@ export interface Customer {
     name: string
     address: string
     contact: string
-    udhar: number
+    netAmount?: number
+    owed?: number
     createdById?: string
     createdBy?: string
     createdByUser?: { name: string; contact?: string }
@@ -68,11 +69,30 @@ export interface Product {
     stockQty: number
     inStock: boolean
     purchasePrice?: number | null
+    averageCost?: number | null
+    fifoCost?: number | null
+    inventoryValue?: number | null
+    batches?: InventoryBatch[]
     discount?: number | null
     unitId?: string | null
     unit?: Unit | null
     history?: { purchasePrice: number; qty: number }[]
     productSale?: { sold: number; createdAt: string }[]
+}
+
+export interface InventoryBatch {
+    id: string
+    _id: string
+    productId: string
+    sourceType: string
+    sourceLabel?: string | null
+    supplierName?: string | null
+    labourerName?: string | null
+    originalQty: number
+    remainingQty: number
+    unitCost: number
+    receivedAt?: string | null
+    notes?: string | null
 }
 
 export interface OrderItem {
@@ -119,7 +139,7 @@ export interface CustomerTransaction {
     _id: string
     customerId: string
     orderId?: string | null
-    type: 'sale' | 'refund' | 'udhar_payment' | string
+    type: 'sale' | 'refund' | 'udhar_payment' | 'order' | 'order_credit' | string
     amount: number
     description: string
     paymentMode?: 'cash' | 'online' | string
@@ -129,12 +149,58 @@ export interface CustomerTransaction {
     createdAt: string
 }
 
+export type TransactionDirection = 'in' | 'out'
+
+export interface CustomerAnalyticsTransaction extends CustomerTransaction {
+    direction: TransactionDirection
+}
+
+export interface CustomerAnalyticsOrder {
+    id: string
+    _id: string
+    customerId: string
+    orderNumber?: number | null
+    price?: number | null
+    payment?: number | null
+    refunded?: number | null
+    discount?: number | null
+    charges?: number | null
+    payable: number
+    outstanding: number
+    status?: string | null
+    orderMode?: 'pos' | 'delayed' | string | null
+    createdAt?: string
+    transactions: CustomerAnalyticsTransaction[]
+}
+
+export interface CustomerAnalyticsRow {
+    id: string
+    _id: string
+    name: string
+    address: string
+    contact: string
+    owed?: number
+    createdAt?: string
+    orderCount: number
+    totalSales: number
+    totalIn: number
+    totalOut: number
+    netAmount: number
+    orderNumbers: number[]
+}
+
+export interface CustomerAnalyticsDetail {
+    customer: Customer
+    orders: CustomerAnalyticsOrder[]
+    standaloneTransactions: CustomerAnalyticsTransaction[]
+}
+
 export interface SupplierTransaction {
     id: string
     _id: string
     supplierId: string
     restockOrderId?: string | null
-    type: 'payment' | 'refund'
+    type: 'purchase' | 'return' | 'payment' | 'refund'
     amount: number
     description: string
     paymentMode?: 'cash' | 'online' | string
@@ -156,7 +222,7 @@ export interface LabourerTransaction {
     createdAt: string
 }
 
-export type LabourTransactionCategory = 'production' | 'advance' | 'bonus' | 'expense' | 'other'
+export type LabourTransactionCategory = 'production' | 'income' | 'advance' | 'bonus' | 'expense' | 'other'
 
 export interface LoginResponse {
     success: boolean
@@ -220,6 +286,39 @@ export interface RestockOrder {
     createdAt?: string
     supplier?: Supplier | null
     items?: RestockOrderItem[]
+}
+
+export interface SupplierAnalyticsTransaction extends SupplierTransaction {
+    direction: TransactionDirection
+}
+
+export interface SupplierAnalyticsOrder extends RestockOrder {
+    outstanding: number
+    transactions: SupplierAnalyticsTransaction[]
+}
+
+export interface SupplierAnalyticsRow {
+    id: string
+    _id: string
+    name: string
+    contact: string
+    businessName?: string | null
+    address?: string | null
+    payable: number
+    isActive: boolean
+    orderCount: number
+    totalPurchases: number
+    restockOutstanding: number
+    totalIn: number
+    totalOut: number
+    netAmount: number
+    referenceNumbers: string[]
+}
+
+export interface SupplierAnalyticsDetail {
+    supplier: Supplier
+    orders: SupplierAnalyticsOrder[]
+    standaloneTransactions: SupplierAnalyticsTransaction[]
 }
 
 export interface RecipeItem {
@@ -287,11 +386,98 @@ export interface LabourProductionEntry {
     ratePerUnit: number
     totalPay: number
     recipeApplied: boolean
+    labourerTransactionId?: string | null
     notes?: string | null
     createdAt?: string
     labourer?: Labourer | null
     product?: Product | null
     consumption?: LabourConsumption[]
+}
+
+export interface LabourAnalyticsTransaction extends LabourerTransaction {
+    direction: TransactionDirection
+}
+
+export interface LabourAnalyticsProduction extends LabourProductionEntry {
+    transactions: LabourAnalyticsTransaction[]
+}
+
+export interface LabourAnalyticsRow {
+    id: string
+    _id: string
+    name: string
+    contact?: string | null
+    notes?: string | null
+    isActive: boolean
+    productionCount: number
+    totalProductionPay: number
+    totalIn: number
+    totalOut: number
+    netAmount: number
+    productNames: string[]
+}
+
+export interface LabourAnalyticsDetail {
+    labourer: Labourer
+    productions: LabourAnalyticsProduction[]
+    standaloneTransactions: LabourAnalyticsTransaction[]
+}
+
+export interface InventoryProductLine {
+    productId: string
+    name: string
+    category: string
+    categoryIds: string[]
+    unitName: string
+    qty: number
+    value: number
+    orderCount: number
+    qtyReceived?: number
+    qtyReturned?: number
+}
+
+export interface InventoryCustomerRow {
+    id: string
+    _id: string
+    name: string
+    contact: string
+    address: string
+    orderCount: number
+    productCount: number
+    totalQty: number
+    totalValue: number
+    products: InventoryProductLine[]
+}
+
+export interface InventorySupplierRow {
+    id: string
+    _id: string
+    name: string
+    contact: string
+    businessName?: string | null
+    address?: string | null
+    isActive: boolean
+    orderCount: number
+    productCount: number
+    totalQty: number
+    totalValue: number
+    products: InventoryProductLine[]
+}
+
+export interface InventoryLabourRow {
+    id: string
+    _id: string
+    name: string
+    contact?: string | null
+    notes?: string | null
+    isActive: boolean
+    productionCount: number
+    productCount: number
+    producedQty: number
+    producedValue: number
+    consumedQty: number
+    produced: InventoryProductLine[]
+    consumed: InventoryProductLine[]
 }
 
 export interface CartLine {
@@ -306,6 +492,12 @@ export interface MiscExpenditureCategory {
     id: string
     _id: string
     name: string
+    parentId?: string | null
+    sortOrder?: number
+    path?: string
+    children?: MiscExpenditureCategory[]
+    expenditureCount?: number
+    expenditureTotal?: number
     createdAt?: string
     updatedAt?: string
 }
@@ -317,7 +509,7 @@ export interface MiscellaneousExpenditure {
     paymentMode: ExpenditurePaymentMode
     note: string
     categoryId?: string | null
-    category?: Pick<MiscExpenditureCategory, 'id' | '_id' | 'name'> | null
+    category?: Pick<MiscExpenditureCategory, 'id' | '_id' | 'name' | 'path'> | null
     proofImage?: string | null
     proofImagePublicId?: string | null
     createdById: string

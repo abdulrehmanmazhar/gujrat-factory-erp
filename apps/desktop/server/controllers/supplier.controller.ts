@@ -16,7 +16,7 @@ export const updateSupplier = CatchAsyncError(async (req: Request, res: Response
 })
 
 export const getSuppliers = CatchAsyncError(async (req: Request, res: Response) => {
-    const suppliers = await supplierService.listSuppliers(req.query.includeInactive === 'true')
+    const suppliers = await supplierService.listSuppliers()
     httpResponse(req, res, 200, 'Suppliers fetched successfully', { suppliers })
 })
 
@@ -25,9 +25,9 @@ export const getSupplier = CatchAsyncError(async (req: Request, res: Response) =
     httpResponse(req, res, 200, 'Supplier fetched successfully', { supplier })
 })
 
-export const deactivateSupplier = CatchAsyncError(async (req: Request, res: Response) => {
-    const supplier = await supplierService.deactivateSupplier(param(req.params.id))
-    httpResponse(req, res, 200, 'Supplier deactivated successfully', { supplier })
+export const deleteSupplier = CatchAsyncError(async (req: Request, res: Response) => {
+    await supplierService.deleteSupplier(param(req.params.id))
+    httpResponse(req, res, 200, 'Supplier and all linked records deleted successfully', null)
 })
 
 export const linkSupplierProduct = CatchAsyncError(async (req: Request, res: Response) => {
